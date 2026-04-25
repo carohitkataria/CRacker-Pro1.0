@@ -8,19 +8,19 @@ import {
 } from "@phosphor-icons/react";
 
 const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: ChartLineUp, testid: "nav-dashboard" },
-  { to: "/projects", label: "Projects", icon: FolderSimple, testid: "nav-projects" },
-  { to: "/customers", label: "Customers", icon: UsersThree, testid: "nav-customers" },
-  { to: "/suppliers", label: "Suppliers", icon: Truck, testid: "nav-suppliers" },
-  { to: "/employees", label: "Employees", icon: UserCircle, testid: "nav-employees" },
-  { to: "/uploads", label: "Excel Upload", icon: UploadSimple, testid: "nav-uploads" },
-  { to: "/approvals", label: "Approvals", icon: GavelIcon, testid: "nav-approvals" },
-  { to: "/audit", label: "Audit Trail", icon: ClockCounterClockwise, testid: "nav-audit" },
+  { to: "/dashboard", label: "Dashboard", icon: ChartLineUp, testid: "sidebar-dashboard" },
+  { to: "/projects", label: "Projects", icon: FolderSimple, testid: "sidebar-projects" },
+  { to: "/customers", label: "Customers", icon: UsersThree, testid: "sidebar-customers" },
+  { to: "/suppliers", label: "Suppliers", icon: Truck, testid: "sidebar-suppliers" },
+  { to: "/employees", label: "Employees", icon: UserCircle, testid: "sidebar-employees" },
+  { to: "/uploads", label: "Excel Upload", icon: UploadSimple, testid: "sidebar-uploads" },
+  { to: "/approvals", label: "Approvals", icon: GavelIcon, testid: "sidebar-approvals" },
+  { to: "/audit", label: "Audit Trail", icon: ClockCounterClockwise, testid: "sidebar-audit" },
 ];
 
 const ADMIN_NAV = [
-  { to: "/admin/users", label: "User Management", icon: ShieldCheck, testid: "nav-admin-users" },
-  { to: "/admin/approval-matrix", label: "Approval Matrix", icon: Database, testid: "nav-admin-rules" },
+  { to: "/admin/users", label: "User Management", icon: ShieldCheck, testid: "sidebar-admin-users" },
+  { to: "/admin/approval-matrix", label: "Approval Matrix", icon: Database, testid: "sidebar-approval-matrix" },
 ];
 
 export default function AppLayout({ children }) {

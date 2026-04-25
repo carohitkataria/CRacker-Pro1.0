@@ -229,6 +229,43 @@ class TestExcel:
         r = requests.get(f"{API}/uploads/logs", headers=admin_headers, timeout=10)
         assert r.status_code == 200 and len(r.json()) >= 1
 
+    def test_upload_with_numeric_phone_and_listing(self, admin_headers):
+        """Regression: openpyxl reads numeric phone cells as int. Backend must coerce
+        to str so subsequent GET /api/customers does not fail with 500."""
+        try:
+            from openpyxl import Workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["customer_name", "sap_customer_code", "balance_outstanding_sap",
+                       "risk_notes", "contact_person", "email", "phone", "country"])
+            # phone is INT (not string) - the actual production hazard
+            ws.append(["TEST_NumPhone_A", "TNP001", 500, "", "Ravi", "r@test.com", 9876543210, "India"])
+            ws.append(["TEST_NumPhone_B", "TNP002", 600, "", "Asha", "a@test.com", 919999988888, "India"])
+            buf = io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+        except Exception as e:
+            pytest.skip(f"openpyxl not available: {e}")
+        files = {"file": ("num_phone.xlsx", buf.getvalue(),
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+        r = requests.post(f"{API}/uploads/customer", headers=admin_headers, files=files, timeout=20)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["success_rows"] >= 2, f"Expected >=2 rows ingested, got {d}"
+
+        # Critical assertion: listing must still work (no 500 from Pydantic on int phone)
+        r = requests.get(f"{API}/customers", headers=admin_headers, timeout=10)
+        assert r.status_code == 200, f"GET /api/customers broke after numeric phone upload: {r.status_code} {r.text[:200]}"
+        rows = r.json()
+        # Find our uploads and verify phone is now stored as str
+        ours = [c for c in rows if c.get("customer_name", "").startswith("TEST_NumPhone")]
+        assert len(ours) >= 2, "Uploaded customers not found in listing"
+        for c in ours:
+            assert isinstance(c.get("phone"), str), f"phone should be str, got {type(c.get('phone'))}: {c.get('phone')}"
+        # cleanup
+        for c in ours:
+            requests.delete(f"{API}/customers/{c['id']}", headers=admin_headers, timeout=10)
+
 
 # ---------------- APPROVALS ----------------
 class TestApprovals:
@@ -312,15 +349,16 @@ class TestAdminUsers:
 # ---------------- BRUTE FORCE ----------------
 class TestBruteForce:
     def test_lockout_after_repeated_attempts(self):
-        # use a fresh email so we don't lock the admin
+        # email-only lockout key now (k8s ingress rotates IPs). Should trigger by 6th attempt.
         email = f"locktest_{int(time.time())}@cp.com"
         statuses = []
-        for _ in range(20):
+        for _ in range(8):
             r = requests.post(f"{API}/auth/login",
                               json={"email": email, "password": "wrong"}, timeout=10)
             statuses.append(r.status_code)
             if r.status_code == 429:
                 break
-        # Lockout MUST trigger eventually; in k8s preview, ingress pods rotate IPs
-        # which means brute-force tracking by ip:email may take more attempts.
-        assert 429 in statuses, f"429 never triggered in 20 attempts; statuses={statuses}"
+        assert 429 in statuses, f"429 never triggered in 8 attempts; statuses={statuses}"
+        # Lockout should have triggered by attempt 6 (5 fails -> 6th sees locked_until)
+        first_429 = statuses.index(429) + 1
+        assert first_429 <= 6, f"Expected 429 by attempt 6 with email-only key, got at attempt {first_429}; statuses={statuses}"

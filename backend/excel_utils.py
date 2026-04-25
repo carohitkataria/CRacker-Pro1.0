@@ -73,6 +73,10 @@ def build_template_xlsx(entity: str) -> bytes:
 def parse_xlsx(file_bytes: bytes, entity: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Returns (valid_rows, failures)."""
     schema = SCHEMAS[entity]
+    # numeric/bool fields - everything else should be coerced to str to avoid
+    # type mismatches (e.g., openpyxl reads numeric phone numbers as int).
+    NUMERIC_FIELDS = {"po_value", "revenue_total", "cost_total", "amount", "balance_outstanding_sap"}
+    BOOL_FIELDS = {"is_billed"}
     df = pd.read_excel(io.BytesIO(file_bytes))
     df = df.where(pd.notnull(df), None)
     valid: List[Dict[str, Any]] = []
@@ -87,16 +91,20 @@ def parse_xlsx(file_bytes: bytes, entity: str) -> Tuple[List[Dict[str, Any]], Li
                     errors.append(f"Missing required field: {col}")
                 continue
             # Type coercions
-            if col in ("po_value", "revenue_total", "cost_total", "amount", "balance_outstanding_sap"):
+            if col in NUMERIC_FIELDS:
                 try:
                     rec[col] = float(val)
                 except Exception:
                     errors.append(f"Invalid number for {col}: {val}")
                     continue
-            elif col == "is_billed":
+            elif col in BOOL_FIELDS:
                 rec[col] = str(val).strip().lower() in ("true", "yes", "1", "y")
             else:
-                rec[col] = str(val).strip() if not isinstance(val, (int, float)) else val
+                # Force string for all other schema columns to keep MongoDB types stable.
+                if isinstance(val, float) and val.is_integer():
+                    rec[col] = str(int(val))
+                else:
+                    rec[col] = str(val).strip()
         if errors:
             failures.append({"row": int(idx) + 2, "errors": errors, "data": rec})
         else:

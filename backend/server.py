@@ -234,8 +234,7 @@ async def on_shutdown():
 @api.post("/auth/login")
 async def login(payload: LoginInput, request: Request, response: Response):
     email = payload.email.lower().strip()
-    ip = request.client.host if request.client else "unknown"
-    identifier = f"{ip}:{email}"
+    identifier = email  # email-only lockout key (k8s ingress rotates client IP)
     # brute force check
     rec = await db.login_attempts.find_one({"identifier": identifier})
     if rec and rec.get("locked_until") and rec["locked_until"] > now_iso():
