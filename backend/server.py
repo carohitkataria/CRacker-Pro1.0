@@ -33,6 +33,7 @@ from services import (
 from excel_utils import (
     build_template_xlsx, parse_xlsx, build_export_xlsx, SCHEMAS,
 )
+import sap_parser
 from notifications import mailer, tpl_approval_request, tpl_test_email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -385,6 +386,15 @@ async def update_customer(cid: str, payload: CustomerIn, user: dict = Depends(ge
 
 @api.delete("/customers/{cid}")
 async def delete_customer(cid: str, user: dict = Depends(require_role("admin"))):
+    existing = await db.customers.find_one({"id": cid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Customer not found")
+    linked = await db.projects.count_documents({"customer_id": cid})
+    if linked > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete '{existing.get('customer_name', cid)}'. {linked} project(s) are linked to this customer. Reassign or delete those projects first.",
+        )
     await db.customers.delete_one({"id": cid})
     await write_audit(db, entity_type="customer", entity_id=cid, action="delete", user=user)
     return {"ok": True}
@@ -517,6 +527,60 @@ async def parse_project_pdf(file: UploadFile = File(...), _: dict = Depends(get_
         parsed = parse_customer_po(contents)
     except Exception as e:
         raise HTTPException(500, f"Parse failed: {e}")
+    return {"file_name": file.filename, "size": len(contents), "parsed": parsed}
+
+
+@api.post("/projects/parse-excel")
+async def parse_project_excel(
+    file: UploadFile = File(...),
+    wbs: Optional[str] = Query(None, description="WBS Element to look up in the Project Master sheet"),
+    _: dict = Depends(get_current_user),
+):
+    """Parse the unified SAP transactions workbook and return fields suitable
+    for pre-filling the New/Edit Project modal.
+
+    The workbook MUST contain a `Project Master` sheet. If `wbs` is provided
+    we look up the matching project; otherwise we return the list of
+    available WBS Elements so the user can pick one in the UI.
+    """
+    safe_name = (file.filename or "file").lower()
+    if not (safe_name.endswith(".xlsx") or safe_name.endswith(".xls")):
+        raise HTTPException(400, "Only Excel files (.xlsx) are supported")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(400, "Empty file")
+    if len(contents) > 30 * 1024 * 1024:
+        raise HTTPException(413, "Excel too large (max 30 MB)")
+    try:
+        result = sap_parser.lookup_project_metadata(contents, wbs_input=wbs)
+    except Exception as e:
+        raise HTTPException(500, f"Parse failed: {e}")
+    # Convert into the same shape ProjectFormModal expects
+    metadata = result.get("metadata") or {}
+    parsed: Dict[str, Any] = {
+        "po_type": "SAP Project Master",
+        "po_classification": {
+            "po_type": "SAP Project Master",
+            "issuer": None, "recipient": None,
+            "confidence": "high" if result.get("matched") else "low",
+        },
+        "matched": result.get("matched", False),
+        "candidates": result.get("candidates", []),
+        "wbs_element": metadata.get("wbs_element"),
+        "project_name": metadata.get("project_name"),
+        "pnl_location": metadata.get("pnl_location"),
+        "project_grouping": metadata.get("project_grouping"),
+        "airport_adjacency": metadata.get("airport_adjacency"),
+        "location": metadata.get("location"),
+        "category1": metadata.get("category1"),
+        "category2": metadata.get("category2"),
+        "business_category": metadata.get("business_category"),
+        "retro_pnl_tagging": metadata.get("retro_pnl_tagging"),
+        "warnings": [] if result.get("matched") else (
+            ["No matching WBS in Project Master — pick one from the candidates list"] if wbs else
+            ["Provide a WBS Element to auto-fill from Project Master"]
+        ),
+    }
     return {"file_name": file.filename, "size": len(contents), "parsed": parsed}
 
 
@@ -881,6 +945,11 @@ async def list_audit(
 # ============================================================
 @api.get("/uploads/template/{entity}")
 async def download_template(entity: str, _: dict = Depends(get_current_user)):
+    if entity == "sap-transactions":
+        data = sap_parser.build_template_xlsx()
+        return StreamingResponse(io.BytesIO(data),
+                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 headers={"Content-Disposition": 'attachment; filename="sap_transactions_template.xlsx"'})
     if entity not in SCHEMAS:
         raise HTTPException(404, "Unknown entity")
     data = build_template_xlsx(entity)
@@ -964,6 +1033,67 @@ async def upload_excel(entity: str, file: UploadFile = File(...), user: dict = D
 @api.get("/uploads/logs", response_model=List[UploadLogOut])
 async def upload_logs(_: dict = Depends(get_current_user)):
     return await db.upload_logs.find({}, {"_id": 0}).sort("uploaded_at", -1).to_list(200)
+
+
+# ----- Unified SAP transactions: one workbook covers Revenue + Expense + Suppliers + Project Master -----
+@api.post("/projects/{pid}/sap-upload")
+async def project_sap_upload(
+    pid: str,
+    kind: str = Query(..., regex="^(revenue|cost)$"),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Import revenue OR cost lines from the unified SAP workbook for a single
+    project. Rows are matched to the project's WBS Element (or any prefix of it)
+    so that sub-WBS rows like ``WSIN.000136.0001`` flow into the parent project
+    ``WSIN.000136``. Returns counts: matched / imported / skipped."""
+    project = await db.projects.find_one({"id": pid}, {"_id": 0})
+    if not project:
+        raise HTTPException(404, "Project not found")
+    safe_name = (file.filename or "file").lower()
+    if not (safe_name.endswith(".xlsx") or safe_name.endswith(".xls")):
+        raise HTTPException(400, "Only Excel files (.xlsx) are supported")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(400, "Empty file")
+    if len(contents) > 60 * 1024 * 1024:
+        raise HTTPException(413, "Excel too large (max 60 MB)")
+
+    wbs = project.get("wbs_element")
+    if not wbs:
+        raise HTTPException(400, "Project has no WBS Element configured — cannot match SAP rows")
+
+    try:
+        if kind == "revenue":
+            rows = sap_parser.parse_revenue_rows(contents, wbs_filter=wbs)
+        else:
+            rows = sap_parser.parse_cost_rows(contents, wbs_filter=wbs)
+    except Exception as e:
+        raise HTTPException(400, f"Failed to parse SAP workbook: {e}")
+
+    coll = db.revenue_lines if kind == "revenue" else db.cost_lines
+    imported = 0
+    skipped = 0
+    for r in rows:
+        try:
+            r["id"] = gen_id()
+            r["project_id"] = pid
+            r["created_at"] = now_iso()
+            await coll.insert_one(r)
+            imported += 1
+        except Exception:
+            skipped += 1
+
+    log = {
+        "id": gen_id(), "entity_type": f"sap_{kind}", "file_name": file.filename or "sap.xlsx",
+        "total_rows": len(rows), "success_rows": imported, "failed_rows": skipped,
+        "failures": [],
+        "uploaded_by": user["email"], "uploaded_at": now_iso(),
+    }
+    await db.upload_logs.insert_one(log)
+    await write_audit(db, entity_type="project", entity_id=pid, action=f"sap_{kind}_import", user=user,
+                      field_changes={"imported": imported, "skipped": skipped, "wbs": wbs})
+    return {"matched": len(rows), "imported": imported, "skipped": skipped, "wbs": wbs, "kind": kind}
 
 
 # ============================================================

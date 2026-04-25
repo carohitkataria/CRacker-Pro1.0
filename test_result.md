@@ -214,7 +214,12 @@ metadata:
 
 test_plan:
   current_focus:
-    - "PDF auto-parse panel inside New/Edit Project modal"
+    - "Unified SAP Excel uploader (per-project /api/projects/{pid}/sap-upload + /api/uploads/template/sap-transactions)"
+    - "Excel-based project autofill in New/Edit modal (/api/projects/parse-excel)"
+    - "ProjectDetailPage crash fix on Revenue/Cost/Milestones tabs (Smart Airside Gate Solution)"
+    - "Admin-only Delete project button on Project Detail header"
+    - "Customer delete guard (block 409 when projects linked)"
+    - "Revenue/Cost stat-tile chips on Project Detail header link to corresponding tab"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -222,7 +227,125 @@ test_plan:
 agent_communication:
     -agent: "main"
     -message: |
-        Implemented 3 features:
+        Iteration 3 - 6 new items shipped:
+        1) NEW backend POST /api/projects/{pid}/sap-upload?kind=revenue|cost
+           - parses unified 4-sheet SAP workbook (Revenue_SAP / Expenses_SAP / Supplier Mapping / Project Master)
+           - matches rows by project's WBS Element (also accepts WBS prefixes so WSIN.000136.0001 flows into project on WSIN.000136)
+           - inserts into revenue_lines / cost_lines, returns {matched, imported, skipped, wbs, kind}
+           - test workbook: /tmp/template.xlsx imports 332 revenue + 1087 cost rows for project with wbs WSIN.000136.0001
+        2) NEW GET /api/uploads/template/sap-transactions  (returns the 4-sheet empty template)
+        3) NEW POST /api/projects/parse-excel?wbs=...  (Project Master autofill for the New/Edit modal — returns matched metadata or list of WBS candidates)
+        4) Customer delete guard - DELETE /api/customers/{cid} now returns 409 if any project links to this customer
+        5) Frontend crash fix on ProjectDetailPage Revenue/Cost/Milestones tabs - inrPerUsd was not propagated to child components
+        6) Admin-only Delete button on Project Detail header (calls existing DELETE /api/projects/{pid})
+        7) Revenue Plan / Cost Plan stat tiles are now clickable -> jump to corresponding tab
+        8) ProjectFormModal now has dual smart-fill: PDF (Customer/Vendor PO) OR Excel (SAP Project Master)
+
+        ⚠️ EXISTING TESTS THAT MUST NOT REGRESS:
+        - parse-pdf endpoint (tested earlier)
+        - notifications status / test (tested earlier)
+        - PO classification (tested earlier)
+
+backend:
+  - task: "Customer delete guard (409 when linked projects exist)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "DELETE /api/customers/{cid} now blocks (409) if any project references this customer_id. Curl tested manually - returns 'Cannot delete... 2 project(s) are linked'."
+
+  - task: "Unified SAP per-project upload (/api/projects/{pid}/sap-upload?kind=revenue|cost)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/sap_parser.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Reads unified 4-sheet workbook. Matches rows by project's WBS Element AND prefixes so WSIN.000136.0001 flows into a project anchored on WSIN.000136. Returns {matched, imported, skipped, wbs, kind}. Manual test on /tmp/template.xlsx: 332 revenue + 1087 cost imported."
+
+  - task: "Excel autofill for project modal (/api/projects/parse-excel)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/sap_parser.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Reads Project Master sheet. With wbs query param, returns matched metadata (project_name, p&l, location, categories, business_category, etc.). Without wbs, returns candidates list. Returns shape compatible with ProjectFormModal preview UI."
+
+  - task: "GET /api/uploads/template/sap-transactions (download empty SAP template)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/sap_parser.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Folded into existing /uploads/template/{entity} handler. Returns 4-sheet empty workbook (Expenses_SAP, Revenue_SAP, Supplier Mapping, Project Master). Manual test: 200 OK, 7295 bytes."
+
+frontend:
+  - task: "Fix ProjectDetailPage crash on Revenue/Cost/Milestones tabs"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ProjectDetailPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "ROOT CAUSE: inrPerUsd was destructured only in parent ProjectDetailPage but referenced inside RevenueTab/CostTab/Milestones as a free variable -> ReferenceError when rows.map ran on populated projects (e.g. Smart Airside Gate Solution). Empty projects didn't crash because map skipped. Now passing inrPerUsd as prop. Verified via screenshot: all 3 tabs load on previously-crashing project."
+
+  - task: "Admin-only Delete button on Project Detail page"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ProjectDetailPage.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Visible only when user.role === 'admin'. Confirms before delete, navigates to /projects on success. Calls existing DELETE /api/projects/{pid}. data-testid: delete-project-btn. Verified: button visible in red on the project detail header."
+
+  - task: "Revenue/Cost stat tiles clickable -> deep-link to tab"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ProjectDetailPage.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Stat tiles for Revenue Plan and Cost Plan now show a small arrow + cursor pointer + hover highlight; clicking switches the active tab. data-testid: stat-revenue, stat-cost. Verified via screenshot."
+
+  - task: "Per-project SAP Excel uploader UI (Revenue & Cost tabs)"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ProjectDetailPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "New SapBulkUpload component renders inline next to 'Add Revenue/Cost' on each tab. Provides 'SAP template' download link + 'Import SAP Excel' button. Shows Imported/Matched/Skipped counters with WBS context. data-testid: sap-bulk-btn-revenue, sap-bulk-btn-cost, sap-bulk-input-revenue, sap-bulk-input-cost, sap-bulk-result-revenue, sap-bulk-result-cost."
+
+  - task: "Project modal Excel auto-fill (SAP Project Master)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/ProjectFormModal.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Smart auto-fill panel now offers PDF AND Excel. Excel parses Project Master sheet. If WBS already in form, fetches metadata immediately. Otherwise shows candidate WBS list as a select; picking one fetches details. Apply only fills empty fields. data-testid: modal-xls-pick, modal-xls-input, xls-candidates, xls-wbs-select, xls-apply-btn, xls-parse-preview, xls-po-type."
         1) New backend endpoint POST /api/projects/parse-pdf (auth required, accepts
            multipart PDF, returns parsed fields incl. po_type/issuer/recipient/confidence
            + milestones). Does NOT write to DB.

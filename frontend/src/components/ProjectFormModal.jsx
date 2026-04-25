@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import api, { formatApiErrorDetail } from "@/lib/api";
-import { X, Plus, Trash, UserPlus, FilePdf, MagicWand, Warning, CheckCircle } from "@phosphor-icons/react";
+import { X, Plus, Trash, UserPlus, FilePdf, FileXls, MagicWand, Warning, CheckCircle } from "@phosphor-icons/react";
 
 const empty = {
   project_name: "", wbs_element: "", customer_po_number: "", po_date: "",
@@ -26,6 +26,14 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
   const [parsePreview, setParsePreview] = useState(null);
   const [parseErr, setParseErr] = useState("");
 
+  // Excel (SAP Project Master) auto-parse state — picks the matching WBS row
+  const xlsRef = useRef(null);
+  const [xlsFile, setXlsFile] = useState(null);
+  const [xlsParsing, setXlsParsing] = useState(false);
+  const [xlsPreview, setXlsPreview] = useState(null);
+  const [xlsCandidates, setXlsCandidates] = useState([]);
+  const [xlsErr, setXlsErr] = useState("");
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const onPickPdf = async (file) => {
@@ -43,6 +51,68 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
       setParsing(false);
       if (pdfRef.current) pdfRef.current.value = "";
     }
+  };
+
+  const onPickXls = async (file) => {
+    if (!file) return;
+    setXlsFile(file); setXlsParsing(true); setXlsErr(""); setXlsPreview(null); setXlsCandidates([]);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const params = new URLSearchParams();
+      if (form.wbs_element) params.set("wbs", form.wbs_element);
+      const { data } = await api.post(`/projects/parse-excel?${params}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (data.parsed?.matched) {
+        setXlsPreview({ ...data, applied: false });
+      } else {
+        setXlsCandidates(data.parsed?.candidates || []);
+      }
+    } catch (e) {
+      setXlsErr(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally {
+      setXlsParsing(false);
+      if (xlsRef.current) xlsRef.current.value = "";
+    }
+  };
+
+  const pickWbsFromList = async (wbs) => {
+    if (!xlsFile) return;
+    setXlsParsing(true); setXlsErr("");
+    try {
+      const fd = new FormData(); fd.append("file", xlsFile);
+      const params = new URLSearchParams({ wbs });
+      const { data } = await api.post(`/projects/parse-excel?${params}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (data.parsed?.matched) {
+        setXlsPreview({ ...data, applied: false });
+        setXlsCandidates([]);
+      } else {
+        setXlsErr("Selected WBS not found in Project Master sheet");
+      }
+    } catch (e) {
+      setXlsErr(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally { setXlsParsing(false); }
+  };
+
+  const applyXlsParsed = () => {
+    const p = xlsPreview?.parsed; if (!p) return;
+    setForm((f) => {
+      const next = { ...f };
+      const fillIfEmpty = (k, v) => { if (v && (next[k] === undefined || next[k] === "" || next[k] === null)) next[k] = v; };
+      fillIfEmpty("wbs_element", p.wbs_element);
+      if (p.project_name && !next.project_name) next.project_name = p.project_name;
+      fillIfEmpty("pnl_location", p.pnl_location);
+      fillIfEmpty("project_grouping", p.project_grouping);
+      fillIfEmpty("airport_adjacency", p.airport_adjacency);
+      fillIfEmpty("location", p.location);
+      fillIfEmpty("category1", p.category1);
+      fillIfEmpty("category2", p.category2);
+      fillIfEmpty("business_category", p.business_category);
+      return next;
+    });
+    setXlsPreview((pp) => ({ ...pp, applied: true }));
   };
 
   const applyParsed = () => {
@@ -134,7 +204,7 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
         </div>
 
         <form onSubmit={onSubmit} className="p-5 space-y-5">
-          {/* PDF Auto-Parse Panel */}
+          {/* Smart Auto-Fill Panel — PDF (Customer/Vendor PO) or Excel (SAP Project Master) */}
           <div className="border border-[var(--border)] p-4 bg-[var(--surface-2)]">
             <div className="flex items-start gap-3">
               <div className="shrink-0 mt-0.5">
@@ -142,10 +212,10 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[10px] tracking-overline text-[var(--muted)]">Smart Auto-Fill</div>
-                <div className="font-display text-sm font-bold mb-0.5">Parse a PO PDF to pre-fill this form</div>
+                <div className="font-display text-sm font-bold mb-0.5">Pre-fill this form from a PDF or Excel</div>
                 <p className="text-[12px] text-[var(--muted)] mb-3">
-                  Detects whether the file is a <span className="font-semibold text-[var(--text)]">Customer PO</span> (WAISL is the vendor) or a{" "}
-                  <span className="font-semibold text-[var(--text)]">Vendor PO</span> (WAISL is the issuer). Review the extracted fields and <span className="font-semibold text-[var(--gold)]">Apply</span> to populate the form. Empty fields only — your edits are preserved.
+                  <span className="font-semibold text-[var(--text)]">PDF</span>: Customer PO (WAISL is the vendor) or Vendor PO (WAISL is the issuer).{" "}
+                  <span className="font-semibold text-[var(--text)]">Excel</span>: unified SAP workbook — we read the <span className="font-mono">Project Master</span> sheet and match by <span className="font-mono">WBS Element</span>. Empty fields only — your edits are preserved.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <input
@@ -163,11 +233,33 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
                     disabled={parsing}
                     data-testid="modal-pdf-pick"
                   >
-                    <FilePdf size={12} weight="bold" /> {parsing ? "Parsing…" : (parsePreview ? "Choose another PDF" : "Choose PDF & Parse")}
+                    <FilePdf size={12} weight="bold" /> {parsing ? "Parsing PDF…" : (parsePreview ? "Re-pick PDF" : "Choose PDF")}
+                  </button>
+                  <input
+                    ref={xlsRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => onPickXls(e.target.files?.[0])}
+                    data-testid="modal-xls-input"
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => xlsRef.current?.click()}
+                    disabled={xlsParsing}
+                    data-testid="modal-xls-pick"
+                  >
+                    <FileXls size={12} weight="bold" /> {xlsParsing ? "Parsing Excel…" : (xlsPreview ? "Re-pick Excel" : "Choose Excel (SAP)")}
                   </button>
                   {parsePreview && (
                     <span className="text-[11px] text-[var(--muted)] truncate">
                       {parsePreview.file_name} · {(parsePreview.size / 1024).toFixed(0)} KB
+                    </span>
+                  )}
+                  {xlsFile && !parsePreview && (
+                    <span className="text-[11px] text-[var(--muted)] truncate">
+                      {xlsFile.name}
                     </span>
                   )}
                 </div>
@@ -177,8 +269,25 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
                     <Warning size={12} weight="bold" /> {parseErr}
                   </div>
                 )}
+                {xlsErr && (
+                  <div className="text-xs text-[var(--danger)] mt-3 flex items-start gap-1">
+                    <Warning size={12} weight="bold" /> {xlsErr}
+                  </div>
+                )}
 
                 {parsePreview?.parsed && <ParsedPreview parsed={parsePreview.parsed} applied={parsePreview.applied} onApply={applyParsed} />}
+
+                {xlsCandidates.length > 0 && (
+                  <div className="mt-3 border border-[var(--border)] bg-[var(--surface)] p-3" data-testid="xls-candidates">
+                    <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Pick the WBS Element from your SAP master ({xlsCandidates.length} found)</div>
+                    <select className="input" defaultValue="" onChange={(e) => e.target.value && pickWbsFromList(e.target.value)} data-testid="xls-wbs-select">
+                      <option value="">— Select a WBS Element —</option>
+                      {xlsCandidates.map((w) => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {xlsPreview?.parsed && <ExcelParsedPreview parsed={xlsPreview.parsed} applied={xlsPreview.applied} onApply={applyXlsParsed} />}
               </div>
             </div>
           </div>
@@ -387,6 +496,50 @@ function ParsedPreview({ parsed, applied, onApply }) {
         <div className="mt-2 text-[11px] text-[var(--warning)] flex items-start gap-1">
           <Warning size={12} weight="bold" /> {parsed.warnings.join(" · ")}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ExcelParsedPreview({ parsed, applied, onApply }) {
+  const items = [
+    ["WBS Element", parsed.wbs_element],
+    ["Project Name", parsed.project_name],
+    ["P&L Region", parsed.pnl_location],
+    ["Project Grouping", parsed.project_grouping],
+    ["Airport / Non-Airport", parsed.airport_adjacency],
+    ["Location", parsed.location],
+    ["Category 1", parsed.category1],
+    ["Category 2", parsed.category2],
+    ["Reporting Tag", parsed.business_category],
+    ["Retro P&L Tagging", parsed.retro_pnl_tagging],
+  ].filter(([, v]) => v);
+  return (
+    <div className="mt-3 border border-[var(--border)] bg-[var(--surface)] p-3" data-testid="xls-parse-preview">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="badge badge-gold" data-testid="xls-po-type">SAP Project Master</span>
+          <span className="text-[10px] tracking-overline text-[var(--muted)]">Confidence · high</span>
+        </div>
+        {applied ? (
+          <span className="badge badge-approved flex items-center gap-1"><CheckCircle size={10} weight="bold" /> Applied</span>
+        ) : (
+          <button type="button" className="btn-primary text-xs flex items-center gap-1" onClick={onApply} data-testid="xls-apply-btn">
+            <CheckCircle size={12} weight="bold" /> Apply to form
+          </button>
+        )}
+      </div>
+      {items.length > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+          {items.map(([k, v]) => (
+            <div key={k} className="min-w-0">
+              <div className="text-[9px] tracking-overline text-[var(--muted)]">{k}</div>
+              <div className="text-[var(--text)] truncate" title={String(v)}>{String(v)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-xs text-[var(--muted)]">No fields detected for this WBS row.</div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
@@ -6,8 +6,9 @@ import StageTracker, { STAGES } from "@/components/StageTracker";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useCurrency } from "@/lib/currency";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { ArrowLeft, ArrowRight, Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Plus, Trash, PencilSimple, X, UploadSimple, FileXls } from "@phosphor-icons/react";
 import ProjectFormModal from "@/components/ProjectFormModal";
+import { useAuth } from "@/lib/auth";
 
 const TABS = ["Overview", "Revenue", "Cost", "Milestones", "Documents", "Queries", "Audit"];
 
@@ -15,6 +16,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { mode, inrPerUsd } = useCurrency();
+  const { user } = useAuth();
 
   const [project, setProject] = useState(null);
   const [tab, setTab] = useState("Overview");
@@ -59,6 +61,18 @@ export default function ProjectDetailPage() {
   const idx = STAGES.indexOf(project.current_stage);
   const nextStage = idx >= 0 && idx < STAGES.length - 1 ? STAGES[idx + 1] : null;
   const prevStage = idx > 0 ? STAGES[idx - 1] : null;
+  const isAdmin = user?.role === "admin";
+
+  const onDelete = async () => {
+    if (!window.confirm(`Permanently delete project "${project.project_name}"? This will also remove its revenue, cost lines and cannot be undone.`)) return;
+    setBusy(true); setError("");
+    try {
+      await api.delete(`/projects/${project.id}`);
+      navigate("/projects");
+    } catch (e) {
+      setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally { setBusy(false); }
+  };
 
   return (
     <div data-testid="project-detail-page">
@@ -81,6 +95,11 @@ export default function ProjectDetailPage() {
             <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => setShowEdit(true)} data-testid="edit-project-btn">
               <PencilSimple size={12} /> Edit
             </button>
+            {isAdmin && (
+              <button className="btn-secondary text-xs flex items-center gap-1 !text-[var(--danger)] !border-[color-mix(in_srgb,var(--danger)_40%,transparent)] hover:!bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]" onClick={onDelete} disabled={busy} data-testid="delete-project-btn">
+                <Trash size={12} /> Delete
+              </button>
+            )}
           </div>
         }
       />
@@ -94,8 +113,8 @@ export default function ProjectDetailPage() {
       {/* Quick stats */}
       <div className="px-8 py-5 grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="PO Value" value={formatCurrency(project.po_value, mode, inrPerUsd)} />
-        <Stat label="Revenue Plan" value={formatCurrency(project.revenue_total, mode, inrPerUsd)} />
-        <Stat label="Cost Plan" value={formatCurrency(project.cost_total, mode, inrPerUsd)} />
+        <Stat label="Revenue Plan" value={formatCurrency(project.revenue_total, mode, inrPerUsd)} onClick={() => setTab("Revenue")} testid="stat-revenue" />
+        <Stat label="Cost Plan" value={formatCurrency(project.cost_total, mode, inrPerUsd)} onClick={() => setTab("Cost")} testid="stat-cost" />
         <Stat label="Margin" value={formatCurrency(project.margin_total, mode, inrPerUsd)} accent />
         <Stat label="Margin %" value={`${(project.margin_pct || 0).toFixed(1)}%`} accent={project.margin_pct >= 15} danger={project.margin_pct < 15} />
       </div>
@@ -118,9 +137,9 @@ export default function ProjectDetailPage() {
 
       <div className="px-8 py-6">
         {tab === "Overview" && <Overview project={project} />}
-        {tab === "Revenue" && <RevenueTab projectId={id} rows={revenue} reload={load} mode={mode} />}
-        {tab === "Cost" && <CostTab projectId={id} rows={cost} reload={load} mode={mode} />}
-        {tab === "Milestones" && <Milestones project={project} mode={mode} />}
+        {tab === "Revenue" && <RevenueTab projectId={id} rows={revenue} reload={load} mode={mode} inrPerUsd={inrPerUsd} project={project} />}
+        {tab === "Cost" && <CostTab projectId={id} rows={cost} reload={load} mode={mode} inrPerUsd={inrPerUsd} project={project} />}
+        {tab === "Milestones" && <Milestones project={project} mode={mode} inrPerUsd={inrPerUsd} />}
         {tab === "Documents" && <DocumentsTab projectId={id} reload={load} />}
         {tab === "Queries" && <QueriesTab projectId={id} />}
         {tab === "Audit" && <AuditTab rows={audit} />}
@@ -138,10 +157,18 @@ export default function ProjectDetailPage() {
   );
 }
 
-function Stat({ label, value, accent, danger }) {
+function Stat({ label, value, accent, danger, onClick, testid }) {
+  const clickable = !!onClick;
   return (
-    <div className="tile p-4">
-      <div className="text-[10px] tracking-overline text-[var(--muted)]">{label}</div>
+    <div
+      className={`tile p-4 ${clickable ? "cursor-pointer transition-all hover:border-[var(--gold)] hover:translate-y-[-1px]" : ""}`}
+      onClick={onClick}
+      data-testid={testid}
+    >
+      <div className="text-[10px] tracking-overline text-[var(--muted)] flex items-center gap-1">
+        {label}
+        {clickable && <ArrowRight size={10} weight="bold" className="text-[var(--gold)] opacity-70" />}
+      </div>
       <div className={`font-mono font-semibold text-xl mt-1 ${accent ? "text-[var(--gold)]" : danger ? "text-[var(--danger)]" : "text-[var(--text)]"}`}>{value}</div>
     </div>
   );
@@ -186,18 +213,21 @@ function Overview({ project }) {
   );
 }
 
-function RevenueTab({ projectId, rows, reload, mode }) {
+function RevenueTab({ projectId, rows, reload, mode, inrPerUsd, project }) {
   const [show, setShow] = useState(false);
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-display text-lg font-bold">Revenue Lines</h3>
-        <button className="btn-primary text-xs flex items-center gap-1" onClick={() => setShow(true)} data-testid="add-revenue-btn"><Plus size={12} /> Add Revenue</button>
+        <div className="flex items-center gap-2">
+          <SapBulkUpload kind="revenue" projectId={projectId} project={project} reload={reload} />
+          <button className="btn-primary text-xs flex items-center gap-1" onClick={() => setShow(true)} data-testid="add-revenue-btn"><Plus size={12} /> Add Revenue</button>
+        </div>
       </div>
       <table className="tbl tile">
         <thead><tr><th>Code</th><th>Description</th><th>Recognition</th><th>Billing</th><th>Status</th><th className="num">Amount</th><th></th></tr></thead>
         <tbody>
-          {rows.map((r) => (
+          {(rows || []).map((r) => (
             <tr key={r.id}>
               <td className="font-mono text-xs">{r.revenue_code || "—"}</td>
               <td>{r.description || "—"}</td>
@@ -208,7 +238,7 @@ function RevenueTab({ projectId, rows, reload, mode }) {
               <td><button className="btn-ghost" onClick={async () => { await api.delete(`/revenue/${r.id}`); reload(); }}><Trash size={14} /></button></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-[var(--muted)]">No revenue lines yet</td></tr>}
+          {(!rows || rows.length === 0) && <tr><td colSpan={7} className="text-center py-8 text-[var(--muted)]">No revenue lines yet</td></tr>}
         </tbody>
       </table>
       {show && <LineModal title="Revenue Line" entity="revenue" projectId={projectId} onClose={() => setShow(false)} onSaved={() => { setShow(false); reload(); }} />}
@@ -216,18 +246,21 @@ function RevenueTab({ projectId, rows, reload, mode }) {
   );
 }
 
-function CostTab({ projectId, rows, reload, mode }) {
+function CostTab({ projectId, rows, reload, mode, inrPerUsd, project }) {
   const [show, setShow] = useState(false);
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-display text-lg font-bold">Cost Lines</h3>
-        <button className="btn-primary text-xs flex items-center gap-1" onClick={() => setShow(true)} data-testid="add-cost-btn"><Plus size={12} /> Add Cost</button>
+        <div className="flex items-center gap-2">
+          <SapBulkUpload kind="cost" projectId={projectId} project={project} reload={reload} />
+          <button className="btn-primary text-xs flex items-center gap-1" onClick={() => setShow(true)} data-testid="add-cost-btn"><Plus size={12} /> Add Cost</button>
+        </div>
       </div>
       <table className="tbl tile">
         <thead><tr><th>Vendor PO</th><th>Supplier</th><th>Description</th><th>Date</th><th>Category</th><th className="num">Amount</th><th></th></tr></thead>
         <tbody>
-          {rows.map((r) => (
+          {(rows || []).map((r) => (
             <tr key={r.id}>
               <td className="font-mono text-xs">{r.vendor_po_ref || "—"}</td>
               <td>{r.supplier_name || "—"}</td>
@@ -238,10 +271,69 @@ function CostTab({ projectId, rows, reload, mode }) {
               <td><button className="btn-ghost" onClick={async () => { await api.delete(`/cost/${r.id}`); reload(); }}><Trash size={14} /></button></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-[var(--muted)]">No cost lines yet</td></tr>}
+          {(!rows || rows.length === 0) && <tr><td colSpan={7} className="text-center py-8 text-[var(--muted)]">No cost lines yet</td></tr>}
         </tbody>
       </table>
       {show && <LineModal title="Cost Line" entity="cost" projectId={projectId} onClose={() => setShow(false)} onSaved={() => { setShow(false); reload(); }} />}
+    </div>
+  );
+}
+
+// Unified SAP Excel upload (single 4-sheet template covers both Revenue & Cost)
+// kind = "revenue" -> imports rows from Revenue_SAP sheet matching project's WBS
+// kind = "cost"    -> imports rows from Expenses_SAP sheet matching project's WBS
+function SapBulkUpload({ kind, projectId, project, reload }) {
+  const inputRef = useRef();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  const onPick = async (file) => {
+    if (!file) return;
+    setBusy(true); setError(""); setResult(null);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const params = new URLSearchParams({ kind });
+      const { data } = await api.post(`/projects/${projectId}/sap-upload?${params}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setResult(data);
+      reload();
+    } catch (e) {
+      setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const downloadTemplate = async () => {
+    const r = await api.get("/uploads/template/sap-transactions", { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([r.data]));
+    const a = document.createElement("a"); a.href = url; a.download = "sap_transactions_template.xlsx"; a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex items-center gap-2" data-testid={`sap-bulk-${kind}`}>
+      <input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => onPick(e.target.files?.[0])} data-testid={`sap-bulk-input-${kind}`} />
+      <button type="button" className="btn-ghost text-[11px] underline" onClick={downloadTemplate} title="Download the unified SAP template">
+        SAP template
+      </button>
+      <button type="button" className="btn-secondary text-xs flex items-center gap-1" onClick={() => inputRef.current?.click()} disabled={busy} data-testid={`sap-bulk-btn-${kind}`}>
+        <FileXls size={12} weight="bold" /> {busy ? "Importing…" : "Import SAP Excel"}
+      </button>
+      {(result || error) && (
+        <div
+          className={`text-[11px] px-2 py-1 border ${error ? "text-[var(--danger)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]" : "text-[var(--success)] border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)]"}`}
+          data-testid={`sap-bulk-result-${kind}`}
+        >
+          {error
+            ? error
+            : `Imported ${result.imported} / ${result.matched} rows · ${result.skipped} skipped (WBS ${project?.wbs_element || "—"})`}
+          <button className="ml-2 opacity-60" onClick={() => { setResult(null); setError(""); }}>×</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -298,7 +390,7 @@ function LineModal({ title, entity, projectId, onClose, onSaved }) {
   );
 }
 
-function Milestones({ project, mode }) {
+function Milestones({ project, mode, inrPerUsd }) {
   const ms = project.milestones || [];
   return (
     <div>
