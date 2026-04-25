@@ -45,6 +45,16 @@ Admin · Finance · Sales/Delivery · Leadership (CFO/CEO/COO) · Approver
 - **Royal Purple theme** (#5C2B84 / #FFC000 / white) + colourful minimalist dashboard charts
 - **Microsoft Graph email notifications** with graceful placeholder mode — wired to approval requests; admin-only `/api/notifications/{status,test}` endpoints
 
+### Phase 3 — Iteration 5 (Feb 2026) ✅ — Aviation theme + Undo
+- **Undo last SAP import** — every SAP upload now stamps rows with `import_batch_id`; new endpoints `GET /api/projects/{pid}/sap-last-import?kind=...` and `POST /api/projects/{pid}/sap-undo-last?kind=...` reverse the latest batch (idempotent: returns 404 on second call).
+- **Frontend Undo button** — appears as `Undo last import (N)` (warning-colored) only when an active batch exists; confirm dialog before delete.
+- **Airline / Aviation visual identity**:
+  - New `AirplaneButton` reusable CTA — airplane icon with take-off animation on click. Used on Login (Sign in & take off), Project Detail (Advance to {stage}), and Project Form (Save Project).
+  - **Login page redesigned** — aviation hero photo (airplane wing over clouds), India tricolor stripe at the very top of the hero, "Welcome aboard" heading, contrails animation.
+  - **Page headers** carry an `airline-stripe` (subtle saffron/white/green band) + Project Detail header has an `aviation-watermark` (faint airplane silhouettes).
+  - CSS additions: `.btn-airplane` + `plane-takeoff` + `contrail-fade` + `cloud-drift` keyframes; respects `prefers-reduced-motion`.
+- 15/15 backend tests + 100% frontend e2e passing (iteration_5).
+
 ### Phase 3 — Iteration 4 (Feb 2026) ✅
 - **Unified SAP Excel uploader** — single 4-sheet workbook (Expenses_SAP / Revenue_SAP / Supplier Mapping / Project Master) drives both Revenue and Cost lines per project
   - Backend: `POST /api/projects/{pid}/sap-upload?kind=revenue|cost`, `GET /api/uploads/template/sap-transactions`, parser at `/app/backend/sap_parser.py`
