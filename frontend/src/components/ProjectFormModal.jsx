@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import api, { formatApiErrorDetail } from "@/lib/api";
-import { X, Plus, Trash, UserPlus } from "@phosphor-icons/react";
+import { X, Plus, Trash, UserPlus, FilePdf, MagicWand, Warning, CheckCircle } from "@phosphor-icons/react";
 
 const empty = {
   project_name: "", wbs_element: "", customer_po_number: "", po_date: "",
@@ -20,7 +20,64 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
   const [customers, setCustomers] = useState(initialCustomers || []);
   const [showNewCust, setShowNewCust] = useState(false);
 
+  // PDF auto-parse state
+  const pdfRef = useRef(null);
+  const [parsing, setParsing] = useState(false);
+  const [parsePreview, setParsePreview] = useState(null);
+  const [parseErr, setParseErr] = useState("");
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const onPickPdf = async (file) => {
+    if (!file) return;
+    setParsing(true); setParseErr(""); setParsePreview(null);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const { data } = await api.post("/projects/parse-pdf", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setParsePreview({ ...data, applied: false });
+    } catch (e) {
+      setParseErr(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally {
+      setParsing(false);
+      if (pdfRef.current) pdfRef.current.value = "";
+    }
+  };
+
+  const applyParsed = () => {
+    if (!parsePreview?.parsed) return;
+    const p = parsePreview.parsed;
+    setForm((f) => {
+      const next = { ...f };
+      // Only fill empty fields to avoid clobbering manual edits
+      const fillIfEmpty = (key, val) => { if (val !== null && val !== undefined && val !== "" && (next[key] === undefined || next[key] === "" || next[key] === 0 || next[key] === null)) next[key] = val; };
+      fillIfEmpty("customer_po_number", p.customer_po_number);
+      fillIfEmpty("po_date", normaliseDate(p.po_date));
+      fillIfEmpty("start_date", normaliseDate(p.start_date));
+      fillIfEmpty("end_date", normaliseDate(p.end_date));
+      fillIfEmpty("po_value", p.po_value);
+      fillIfEmpty("currency", p.currency);
+      fillIfEmpty("billing_type", p.billing_type);
+      fillIfEmpty("description", p.description);
+      // Customer name (only if Customer PO and field empty)
+      if (p.po_type === "Customer PO" && p.customer_name && !next.customer_name) {
+        next.customer_name = p.customer_name;
+      }
+      // Milestones — only replace when current list is empty
+      if (Array.isArray(p.milestones) && p.milestones.length > 0 && (!next.milestones || next.milestones.length === 0)) {
+        next.milestones = p.milestones.map((m) => ({
+          milestone_name: m.milestone_name || "",
+          due_date: normaliseDate(m.due_date) || "",
+          value: Number(m.value || 0),
+          is_billed: !!m.is_billed,
+        }));
+        if (!next.billing_type) next.billing_type = "Milestone";
+      }
+      return next;
+    });
+    setParsePreview((pp) => ({ ...pp, applied: true }));
+  };
 
   const addMilestone = () => {
     set("milestones", [...(form.milestones || []), { milestone_name: "", due_date: "", value: 0, is_billed: false }]);
@@ -77,6 +134,55 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
         </div>
 
         <form onSubmit={onSubmit} className="p-5 space-y-5">
+          {/* PDF Auto-Parse Panel */}
+          <div className="border border-[var(--border)] p-4 bg-[var(--surface-2)]">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 mt-0.5">
+                <MagicWand size={22} weight="duotone" className="text-[var(--gold)]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Smart Auto-Fill</div>
+                <div className="font-display text-sm font-bold mb-0.5">Parse a PO PDF to pre-fill this form</div>
+                <p className="text-[12px] text-[var(--muted)] mb-3">
+                  Detects whether the file is a <span className="font-semibold text-[var(--text)]">Customer PO</span> (WAISL is the vendor) or a{" "}
+                  <span className="font-semibold text-[var(--text)]">Vendor PO</span> (WAISL is the issuer). Review the extracted fields and <span className="font-semibold text-[var(--gold)]">Apply</span> to populate the form. Empty fields only — your edits are preserved.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    ref={pdfRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => onPickPdf(e.target.files?.[0])}
+                    data-testid="modal-pdf-input"
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => pdfRef.current?.click()}
+                    disabled={parsing}
+                    data-testid="modal-pdf-pick"
+                  >
+                    <FilePdf size={12} weight="bold" /> {parsing ? "Parsing…" : (parsePreview ? "Choose another PDF" : "Choose PDF & Parse")}
+                  </button>
+                  {parsePreview && (
+                    <span className="text-[11px] text-[var(--muted)] truncate">
+                      {parsePreview.file_name} · {(parsePreview.size / 1024).toFixed(0)} KB
+                    </span>
+                  )}
+                </div>
+
+                {parseErr && (
+                  <div className="text-xs text-[var(--danger)] mt-3 flex items-start gap-1">
+                    <Warning size={12} weight="bold" /> {parseErr}
+                  </div>
+                )}
+
+                {parsePreview?.parsed && <ParsedPreview parsed={parsePreview.parsed} applied={parsePreview.applied} onApply={applyParsed} />}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Field label="Project Name *">
               <input className="input" required value={form.project_name} onChange={(e) => set("project_name", e.target.value)} data-testid="form-project-name" />
@@ -189,6 +295,99 @@ function Field({ label, children, full }) {
     <div className={full ? "col-span-2" : ""}>
       <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+// Normalise common PO date formats to YYYY-MM-DD for <input type="date" />
+function normaliseDate(s) {
+  if (!s || typeof s !== "string") return "";
+  const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", sept: "09", oct: "10", nov: "11", dec: "12" };
+  const t = s.trim().replace(/[\s\.]+/g, "-").replace(/\/+/g, "-");
+  // dd-mm-yyyy or dd-mmm-yyyy or dd-month-yyyy
+  let m = t.match(/^(\d{1,2})-([A-Za-z0-9]{1,9})-(\d{2,4})$/);
+  if (m) {
+    let [, d, mo, y] = m;
+    if (/^\d+$/.test(mo)) mo = mo.padStart(2, "0");
+    else mo = months[mo.toLowerCase().slice(0, 4)] || months[mo.toLowerCase().slice(0, 3)] || "";
+    if (!mo) return "";
+    if (y.length === 2) y = (parseInt(y, 10) > 50 ? "19" : "20") + y;
+    return `${y}-${mo}-${d.padStart(2, "0")}`;
+  }
+  // yyyy-mm-dd already
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return "";
+}
+
+function ParsedPreview({ parsed, applied, onApply }) {
+  const cls = parsed.po_classification || {};
+  const typeStyle =
+    parsed.po_type === "Customer PO" ? "badge-approved" :
+    parsed.po_type === "Vendor PO" ? "badge-gold" : "badge-neutral";
+  const items = [
+    ["PO Number", parsed.customer_po_number],
+    ["PO Date", parsed.po_date],
+    ["PO Value", parsed.po_value != null ? Number(parsed.po_value).toLocaleString() : null],
+    ["Currency", parsed.currency],
+    ["Start Date", parsed.start_date],
+    ["End Date", parsed.end_date],
+    ["Billing Type", parsed.billing_type],
+    ["Issuer", parsed.issuer],
+    ["Recipient", parsed.recipient],
+    ["Customer", parsed.customer_name],
+    ["Vendor", parsed.vendor_name],
+    ["Description", parsed.description],
+  ].filter(([, v]) => v);
+
+  return (
+    <div className="mt-3 border border-[var(--border)] bg-[var(--surface)] p-3" data-testid="parse-preview">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className={`badge ${typeStyle}`} data-testid="parse-po-type">{parsed.po_type}</span>
+          {cls.confidence && <span className="text-[10px] tracking-overline text-[var(--muted)]">Confidence · {cls.confidence}</span>}
+        </div>
+        {applied ? (
+          <span className="badge badge-approved flex items-center gap-1"><CheckCircle size={10} weight="bold" /> Applied</span>
+        ) : (
+          <button type="button" className="btn-primary text-xs flex items-center gap-1" onClick={onApply} data-testid="parse-apply-btn">
+            <CheckCircle size={12} weight="bold" /> Apply to form
+          </button>
+        )}
+      </div>
+
+      {items.length > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+          {items.map(([k, v]) => (
+            <div key={k} className="min-w-0">
+              <div className="text-[9px] tracking-overline text-[var(--muted)]">{k}</div>
+              <div className="text-[var(--text)] truncate" title={String(v)}>{String(v)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-xs text-[var(--muted)]">No structured fields detected — please fill manually.</div>
+      )}
+
+      {Array.isArray(parsed.milestones) && parsed.milestones.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-[var(--border-soft)]">
+          <div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Milestones found · {parsed.milestones.length}</div>
+          <div className="text-[11px] text-[var(--muted)]">
+            {parsed.milestones.slice(0, 4).map((m, i) => (
+              <span key={i} className="inline-block mr-3">
+                <span className="text-[var(--text)]">{m.milestone_name}</span> · {m.due_date} · {Number(m.value || 0).toLocaleString()}
+              </span>
+            ))}
+            {parsed.milestones.length > 4 && <span>… +{parsed.milestones.length - 4} more</span>}
+          </div>
+        </div>
+      )}
+
+      {Array.isArray(parsed.warnings) && parsed.warnings.length > 0 && (
+        <div className="mt-2 text-[11px] text-[var(--warning)] flex items-start gap-1">
+          <Warning size={12} weight="bold" /> {parsed.warnings.join(" · ")}
+        </div>
+      )}
     </div>
   );
 }

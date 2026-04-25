@@ -33,6 +33,7 @@ from services import (
 from excel_utils import (
     build_template_xlsx, parse_xlsx, build_export_xlsx, SCHEMAS,
 )
+from notifications import mailer, tpl_approval_request, tpl_test_email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("crackerpro")
@@ -498,6 +499,27 @@ async def get_project(pid: str, _: dict = Depends(get_current_user)):
     return doc
 
 
+@api.post("/projects/parse-pdf")
+async def parse_project_pdf(file: UploadFile = File(...), _: dict = Depends(get_current_user)):
+    """Parse a PO PDF and return extracted fields WITHOUT saving anything.
+    Used by the New/Edit Project modal so the user can preview and confirm
+    before fields are applied to the form."""
+    safe_name = (file.filename or "file").lower()
+    if not (file.content_type == "application/pdf" or safe_name.endswith(".pdf")):
+        raise HTTPException(400, "Only PDF files are supported for auto-parse")
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(400, "Empty file")
+    if len(contents) > 25 * 1024 * 1024:  # 25 MB safety cap
+        raise HTTPException(413, "PDF too large (max 25 MB)")
+    try:
+        from pdf_parser import parse_customer_po
+        parsed = parse_customer_po(contents)
+    except Exception as e:
+        raise HTTPException(500, f"Parse failed: {e}")
+    return {"file_name": file.filename, "size": len(contents), "parsed": parsed}
+
+
 @api.post("/projects", response_model=ProjectOut)
 async def create_project(payload: ProjectIn, user: dict = Depends(get_current_user)):
     doc = payload.model_dump()
@@ -558,11 +580,21 @@ async def transition_project(pid: str, payload: StageTransitionIn, user: dict = 
     if forward:
         rule = await find_matching_rule(db, project, target)
         if rule:
-            await create_approval_request(db, project, rule, target, user)
+            req = await create_approval_request(db, project, rule, target, user)
             await db.projects.update_one({"id": pid}, {"$set": {"approval_status": "Pending", "updated_at": now_iso()}})
             await write_audit(db, entity_type="project", entity_id=pid, action="approval_requested", user=user,
                               field_changes={"target_stage": target, "rule": rule.get("name")},
                               reason=payload.reason or "")
+            # Fire-and-forget email notification (Microsoft Graph). Skipped silently
+            # when credentials are placeholders or NOTIFY_ENABLED=false.
+            try:
+                subject, html = tpl_approval_request({**req, "raised_by": user.get("email"), "reason": payload.reason or ""}, project)
+                # extra recipients: rule approvers
+                cc = [a for a in (rule.get("approver_emails") or []) if a]
+                import asyncio as _asyncio
+                _asyncio.create_task(mailer.send(subject=subject, html_body=html, cc=cc))
+            except Exception as _e:
+                logger.warning("Notification dispatch failed: %s", _e)
             return await db.projects.find_one({"id": pid}, {"_id": 0})
 
     # No approval needed → transition immediately
@@ -1242,6 +1274,26 @@ async def update_settings(payload: dict, user: dict = Depends(require_role("admi
     await write_audit(db, entity_type="settings", entity_id="global", action="update", user=user, field_changes=upd)
     s = await db.settings.find_one({"id": "global"}, {"_id": 0})
     return s
+
+
+# ============================================================
+# NOTIFICATIONS (admin) — Microsoft Graph email
+# ============================================================
+@api.get("/notifications/status")
+async def notifications_status(_: dict = Depends(require_role("admin"))):
+    """Show current notification configuration (no secrets)."""
+    return mailer.status()
+
+
+@api.post("/notifications/test")
+async def notifications_test(payload: dict = None, user: dict = Depends(require_role("admin"))):
+    """Send a test email to the configured recipient (or override via {to: ...})."""
+    to = None
+    if payload and isinstance(payload, dict) and payload.get("to"):
+        to = [payload["to"]]
+    subject, html = tpl_test_email()
+    result = await mailer.send(subject=subject, html_body=html, to_recipients=to)
+    return result
 
 
 # Register router & CORS

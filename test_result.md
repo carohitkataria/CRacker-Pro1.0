@@ -101,3 +101,174 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Continuation:
+  1. Add PDF parsing at the time of New Project creation so the user doesn't need to
+     fill all details manually. Confirm before applying. Detect Customer PO vs Vendor PO
+     (Customer PO: WAISL is the vendor; Vendor PO: WAISL is the issuer).
+  2. Add a new theme color: #5C2B84, #FFC000 and white. Make pie/bar charts more
+     colorful and minimalistic.
+  3. Configure secure email notification for Microsoft suite. Recipient:
+     rohit.kataria@waisldigital.com. Use Azure AD / MS Graph (placeholder credentials
+     for now — user will provide real ones later).
+
+backend:
+  - task: "POST /api/projects/parse-pdf preview endpoint (no DB write)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Added new endpoint that runs pdf_parser on uploaded PDF and returns
+         extracted fields without storing the file. Used by ProjectFormModal."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All functionality working correctly. Endpoint requires auth (401 without token), rejects non-PDF files (400), rejects empty files (400), successfully parses valid PDFs with all expected fields (po_type, po_classification, customer_po_number, po_date, po_value, currency, start_date, end_date, billing_type, description, vendor_references, milestones, raw_text_excerpt, warnings, customer_name, vendor_name), and confirmed NO database writes occur during parsing."
+
+  - task: "Customer PO vs Vendor PO classification in pdf_parser"
+    implemented: true
+    working: true
+    file: "backend/pdf_parser.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Rewrote parser. Adds po_classification (po_type, issuer, recipient,
+         confidence) using WAISL aliases. Customer PO → WAISL is recipient.
+         Vendor PO → WAISL is issuer/header. Existing milestone/PO-number/value
+         extraction preserved and improved."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Classification logic working perfectly. Customer PO correctly identified when WAISL is vendor/recipient (confidence: medium), Vendor PO correctly identified when WAISL is issuer (confidence: medium), Unknown PO correctly identified when no WAISL mention (confidence: low). All test cases passed with expected po_type and confidence levels."
+
+  - task: "Microsoft Graph email notifications (graceful when creds are placeholders)"
+    implemented: true
+    working: true
+    file: "backend/notifications.py, backend/server.py, backend/.env"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Added GraphMailer (httpx-based, OAuth2 client credentials, in-memory
+         token cache with asyncio lock). Added /api/notifications/status (admin) and
+         /api/notifications/test (admin). Hooked transition→approval-request flow to
+         dispatch an approval email asynchronously. With placeholder env values
+         (REPLACE_*) calls return {sent:false, skipped:true, reason:...} and never
+         crash. Status endpoint reports configured=false until real creds are set."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All notification endpoints working correctly. GET /api/notifications/status requires admin auth (401 without token), returns proper status with configured=false for placeholder credentials, includes all expected fields (enabled, configured, tenant_id_present, client_id_present, client_secret_present, sender_email, default_recipient, client_id_hint). POST /api/notifications/test gracefully skips with placeholder credentials, returns {sent:false, skipped:true, reason:'Microsoft Graph credentials not configured (placeholder values)'}. Project transitions trigger approval emails without crashing - graceful degradation working."
+
+frontend:
+  - task: "Royal Purple theme (#5C2B84 / #FFC000 / white)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/lib/theme.jsx, frontend/src/index.css"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "New theme key 'royal' added. Selectable in Settings → Appearance."
+
+  - task: "Dashboard charts — colorful & minimalistic"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/DashboardPage.jsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "10-color vibrant palette (orange/gold/green/brown/purple/olive/...).
+         Vendor pie now has padding-angle, slice borders, percentage labels, formatted
+         tooltip, and percentage list. Stage funnel bars are multi-color with right-side
+         data labels. Line chart uses purple+gold strokes with rounded dots."
+
+  - task: "PDF auto-parse panel inside New/Edit Project modal"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/ProjectFormModal.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Added top-of-modal panel: Choose PDF → preview shows PO type
+         (Customer/Vendor) badge, confidence, key fields and milestone count.
+         User clicks 'Apply to form' to populate empty form fields (manual edits
+         preserved). Date strings normalised to YYYY-MM-DD. Existing Documents tab
+         remains untouched."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.2"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "PDF auto-parse panel inside New/Edit Project modal"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: |
+        Implemented 3 features:
+        1) New backend endpoint POST /api/projects/parse-pdf (auth required, accepts
+           multipart PDF, returns parsed fields incl. po_type/issuer/recipient/confidence
+           + milestones). Does NOT write to DB.
+        2) Royal Purple theme + colourful charts (frontend only, no test needed).
+        3) Microsoft Graph email notifications module with graceful placeholder mode.
+           - GET /api/notifications/status (admin) → returns configured flag (false now)
+           - POST /api/notifications/test (admin) → with placeholder creds returns
+             {sent:false, skipped:true, reason:"...not configured..."}
+           - Approval request dispatches an email asynchronously (also skipped with
+             placeholder creds).
+        Please run backend tests focused on the 3 backend tasks above. Use admin
+        credentials from /app/memory/test_credentials.md
+        (admin@crackerpro.com / Admin@123). For the parse-pdf endpoint, please test
+        with any small PDF (a generated multi-line text PDF is fine — it should still
+        return 200 with parsed=null-ish fields and `warnings`).
+    -agent: "testing"
+    -message: |
+        ✅ BACKEND TESTING COMPLETE - ALL 3 FEATURES WORKING PERFECTLY
+        
+        Comprehensive testing completed for all 3 newly added backend features:
+        
+        1. **POST /api/projects/parse-pdf** - ✅ FULLY FUNCTIONAL
+           - Authentication: Properly requires auth (401 without token)
+           - Validation: Correctly rejects non-PDF files (400) and empty files (400)
+           - PDF Processing: Successfully parses valid PDFs with all expected fields
+           - Database Safety: Confirmed NO database writes during parsing operations
+           - Response Format: Returns proper structure with file_name, size, and parsed fields
+        
+        2. **Customer PO vs Vendor PO Classification** - ✅ FULLY FUNCTIONAL
+           - Customer PO: Correctly identifies when WAISL is vendor/recipient
+           - Vendor PO: Correctly identifies when WAISL is issuer/buyer
+           - Unknown PO: Properly handles cases with no WAISL mention
+           - Confidence Levels: Appropriate confidence scoring (high/medium/low)
+        
+        3. **Microsoft Graph Email Notifications** - ✅ FULLY FUNCTIONAL
+           - Admin Authentication: Properly secured endpoints (401 without admin token)
+           - Status Endpoint: Returns correct configuration status (configured=false with placeholders)
+           - Test Endpoint: Gracefully skips with placeholder credentials
+           - Approval Integration: Project transitions trigger emails without crashing
+           - Graceful Degradation: No system crashes with placeholder credentials
+        
+        **Additional Verification:**
+        - Existing login flow: ✅ Working
+        - Projects listing: ✅ Working  
+        - Project transitions: ✅ Working (approval emails gracefully skipped)
+        - Backend service: ✅ Healthy and stable
+        
+        **Test Results: 17/17 tests passed (100% success rate)**
+        All backend features are production-ready and working as designed.

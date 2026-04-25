@@ -71,6 +71,28 @@ html[data-theme="golden"] {
   --shadow-color: 80 60 20;
 }
 
+/* Royal Purple — #5C2B84 + #FFC000 + white */
+html[data-theme="royal"] {
+  --bg: #FAF7FD;
+  --surface: #FFFFFF;
+  --surface-2: #F1E8F8;
+  --text: #1F0E33;
+  --muted: #6B5784;
+  --border: #D9C8EA;
+  --border-soft: #EBE0F4;
+  --gold: #5C2B84;       /* primary brand: royal purple */
+  --gold-soft: #FFC000;  /* accent: gold/yellow */
+  --success: #2E7D5B;
+  --warning: #C77700;
+  --danger: #B42323;
+  --sidebar: #2A0F4E;
+  --sidebar-text: #FFFFFF;
+  --row-hover: #F6EFFA;
+  --table-header-bg: #F1E8F8;
+  --input-bg: #FFFFFF;
+  --shadow-color: 90 40 130;
+}
+
 html[data-theme="charcoal"] {
   --bg: #16151A;
   --surface: #1F1E24;

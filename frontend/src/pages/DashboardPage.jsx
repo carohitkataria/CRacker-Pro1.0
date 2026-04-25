@@ -64,7 +64,22 @@ export default function DashboardPage() {
   const monthChart = monthly_billing.map((m) => ({
     month: m.month, billed: m.billed / 1e7, recognized: m.recognized / 1e7,
   }));
-  const PIE_COLORS = ["#A67C00", "#D4AF37", "#2E6B4A", "#B45309", "#5E5E5A"];
+  // Vibrant minimal palette (inspired by reference) — works across themes
+  const CHART_PALETTE = [
+    "#E07A3C", // orange
+    "#FFC000", // gold
+    "#7BB661", // green
+    "#7B3F00", // brown
+    "#5C2B84", // royal purple
+    "#8B9A2B", // olive
+    "#D9A45B", // tan
+    "#3CA67A", // teal-green
+    "#C46A3C", // terracotta
+    "#3D8B7A", // dark teal
+  ];
+  const PIE_COLORS = CHART_PALETTE;
+  const STAGE_COLORS = ["#E07A3C", "#FFC000", "#7BB661", "#5C2B84", "#7B3F00"];
+  const totalVendor = (vendor_exposure || []).reduce((s, v) => s + (v.amount || 0), 0) || 1;
 
   return (
     <div data-testid="dashboard-page">
@@ -147,14 +162,14 @@ export default function DashboardPage() {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={monthChart}>
-                <CartesianGrid strokeDasharray="2 4" stroke="#E5E5E0" />
-                <XAxis dataKey="month" stroke="#5E5E5A" fontSize={11} />
-                <YAxis stroke="#5E5E5A" fontSize={11} />
-                <Tooltip contentStyle={{ borderRadius: 2, borderColor: "#E5E5E0", fontSize: 12 }} />
-                <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="recognized" name="Recognized (Cr)" stroke="#A67C00" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="billed" name="Billed (Cr)" stroke="#111110" strokeWidth={2} dot={{ r: 3 }} />
+              <LineChart data={monthChart} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--border-soft)" vertical={false} />
+                <XAxis dataKey="month" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface)", fontSize: 12 }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                <Line type="monotone" dataKey="recognized" name="Recognized (Cr)" stroke="#5C2B84" strokeWidth={2.5} dot={{ r: 3, fill: "#5C2B84" }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="billed" name="Billed (Cr)" stroke="#FFC000" strokeWidth={2.5} dot={{ r: 3, fill: "#FFC000" }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -163,12 +178,14 @@ export default function DashboardPage() {
             <div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Pipeline Funnel</div>
             <div className="font-display text-lg font-bold mb-4">Stage Distribution</div>
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={stageChart} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="#E5E5E0" />
-                <XAxis type="number" stroke="#5E5E5A" fontSize={11} />
-                <YAxis type="category" dataKey="name" stroke="#5E5E5A" fontSize={11} width={90} />
-                <Tooltip contentStyle={{ borderRadius: 2, borderColor: "#E5E5E0", fontSize: 12 }} />
-                <Bar dataKey="count" fill="#A67C00" />
+              <BarChart data={stageChart} layout="vertical" margin={{ top: 4, left: 8, right: 24, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 4" stroke="var(--border-soft)" horizontal={false} />
+                <XAxis type="number" stroke="var(--muted)" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" stroke="var(--muted)" fontSize={11} width={90} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface)", fontSize: 12 }} cursor={{ fill: "var(--surface-2)" }} />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]} label={{ position: "right", fill: "var(--text)", fontSize: 11, fontWeight: 600 }}>
+                  {stageChart.map((_, i) => <Cell key={i} fill={STAGE_COLORS[i % STAGE_COLORS.length]} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -212,24 +229,42 @@ export default function DashboardPage() {
               <Truck size={18} weight="duotone" className="text-[var(--gold)]" />
             </div>
             <div className="grid grid-cols-2 gap-4 items-center">
-              <ResponsiveContainer width="100%" height={180}>
+              <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
-                  <Pie data={vendor_exposure} dataKey="amount" nameKey="supplier_name" innerRadius={40} outerRadius={70}>
+                  <Pie
+                    data={vendor_exposure}
+                    dataKey="amount"
+                    nameKey="supplier_name"
+                    innerRadius={42}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    stroke="var(--surface)"
+                    strokeWidth={2}
+                    label={({ percent }) => percent > 0.04 ? `${Math.round(percent * 100)}%` : ""}
+                    labelLine={false}
+                    fontSize={11}
+                  >
                     {vendor_exposure.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ borderRadius: 2, borderColor: "#E5E5E0", fontSize: 12 }} />
+                  <Tooltip
+                    formatter={(v, n) => [formatCurrency(v, mode, inrPerUsd), n]}
+                    contentStyle={{ borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface)", fontSize: 12 }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="space-y-2">
-                {vendor_exposure.map((v, i) => (
-                  <div key={v.supplier_name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                      <span className="truncate max-w-[120px]">{v.supplier_name}</span>
+              <div className="space-y-1.5">
+                {vendor_exposure.map((v, i) => {
+                  const pct = ((v.amount || 0) / totalVendor) * 100;
+                  return (
+                    <div key={v.supplier_name} className="flex items-center justify-between text-xs gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        <span className="truncate">{v.supplier_name}</span>
+                      </div>
+                      <span className="font-mono text-[var(--muted)]">{pct.toFixed(0)}%</span>
                     </div>
-                    <span className="font-mono">{formatCurrency(v.amount, mode, inrPerUsd)}</span>
-                  </div>
-                ))}
+                  );
+                })}
                 {vendor_exposure.length === 0 && <div className="text-xs text-[var(--muted)]">No cost data yet</div>}
               </div>
             </div>
