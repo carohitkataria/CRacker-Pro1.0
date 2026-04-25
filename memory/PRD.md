@@ -40,6 +40,24 @@ Admin · Finance · Sales/Delivery · Leadership (CFO/CEO/COO) · Approver
 - Currency toggle, KPI tiles clickable, recharts visualizations, sidebar role-based menu
 - Seeded sample data + 24-test pytest suite
 
+### Phase 3 — Iteration 3 (Feb 2026) ✅
+- **PDF auto-parse in New/Edit Project modal** — distinguishes Customer PO (WAISL = vendor) vs Vendor PO (WAISL = issuer); confirmation preview before applying
+- **Royal Purple theme** (#5C2B84 / #FFC000 / white) + colourful minimalist dashboard charts
+- **Microsoft Graph email notifications** with graceful placeholder mode — wired to approval requests; admin-only `/api/notifications/{status,test}` endpoints
+
+### Phase 3 — Iteration 4 (Feb 2026) ✅
+- **Unified SAP Excel uploader** — single 4-sheet workbook (Expenses_SAP / Revenue_SAP / Supplier Mapping / Project Master) drives both Revenue and Cost lines per project
+  - Backend: `POST /api/projects/{pid}/sap-upload?kind=revenue|cost`, `GET /api/uploads/template/sap-transactions`, parser at `/app/backend/sap_parser.py`
+  - WBS prefix matching: rows like `WSIN.000136.0001` flow into a project anchored on `WSIN.000136`
+  - First import on seed data: 332 revenue + 1087 cost rows for Smart Airside Gate Solution
+  - Frontend: `Import SAP Excel` button + `SAP template` download on Revenue & Cost tabs
+- **Excel autofill in New/Edit Project modal** — `POST /api/projects/parse-excel` reads Project Master sheet; if no WBS provided returns candidate list, else returns matched metadata to pre-fill the form
+- **Project Detail crash fix** — Revenue / Cost / Milestones tabs no longer crash on populated projects (`inrPerUsd` was missing inside child sub-components)
+- **Admin-only Delete Project button** on the project detail header
+- **Customer delete guard** — `DELETE /api/customers/{cid}` returns 409 with detail when any project links to that customer
+- **Clickable Revenue/Cost stat tiles** on the project detail header — deep-link to corresponding tab
+- 16/16 backend tests passing (iteration_4); 100% frontend flows verified
+
 ### Phase 2 — Completed Jan 2026 ✅
 - **Pencil edit button on every Projects list row** (data-testid `project-edit-{id}`) opens edit modal in-place
 - **Finance Query Discussion Engine** — threaded queries per project
