@@ -1,51 +1,58 @@
-import { useEffect } from "react";
+import React from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import { CurrencyProvider } from "@/lib/currency";
+import AppLayout from "@/components/AppLayout";
+import LoginPage from "@/pages/LoginPage";
+import DashboardPage from "@/pages/DashboardPage";
+import ProjectsPage from "@/pages/ProjectsPage";
+import ProjectDetailPage from "@/pages/ProjectDetailPage";
+import MasterPage from "@/pages/MasterPage";
+import UploadsPage from "@/pages/UploadsPage";
+import ApprovalsPage from "@/pages/ApprovalsPage";
+import AuditPage from "@/pages/AuditPage";
+import AdminUsersPage from "@/pages/AdminUsersPage";
+import ApprovalMatrixPage from "@/pages/ApprovalMatrixPage";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+function Protected({ children, adminOnly }) {
+  const { user } = useAuth();
+  if (user === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8]">
+        <div className="text-[#5E5E5A] tracking-overline text-xs">Loading…</div>
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (adminOnly && user.role !== "admin") return <Navigate to="/dashboard" replace />;
+  return <AppLayout>{children}</AppLayout>;
+}
 
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <CurrencyProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+              <Route path="/projects" element={<Protected><ProjectsPage /></Protected>} />
+              <Route path="/projects/:id" element={<Protected><ProjectDetailPage /></Protected>} />
+              <Route path="/customers" element={<Protected><MasterPage entityKey="customers" /></Protected>} />
+              <Route path="/suppliers" element={<Protected><MasterPage entityKey="suppliers" /></Protected>} />
+              <Route path="/employees" element={<Protected><MasterPage entityKey="employees" /></Protected>} />
+              <Route path="/uploads" element={<Protected><UploadsPage /></Protected>} />
+              <Route path="/approvals" element={<Protected><ApprovalsPage /></Protected>} />
+              <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
+              <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />
+              <Route path="/admin/approval-matrix" element={<Protected adminOnly><ApprovalMatrixPage /></Protected>} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </CurrencyProvider>
+        </AuthProvider>
       </BrowserRouter>
     </div>
   );
