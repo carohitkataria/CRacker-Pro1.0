@@ -36,7 +36,7 @@ export default function ApprovalsPage() {
         <div className="flex gap-1 mb-4">
           {["Pending", "Approved", "Rejected", "All"].map((t) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2 text-xs font-medium border-b-2 ${tab === t ? "border-[#A67C00] text-[#A67C00]" : "border-transparent text-[#5E5E5A]"}`}
+              className={`px-4 py-2 text-xs font-medium border-b-2 ${tab === t ? "border-[var(--gold)] text-[var(--gold)]" : "border-transparent text-[var(--muted)]"}`}
               data-testid={`approvals-tab-${t.toLowerCase()}`}>{t}</button>
           ))}
         </div>
@@ -51,11 +51,11 @@ export default function ApprovalsPage() {
                   <td><StatusBadge status={r.target_stage} /></td>
                   <td>{r.rule_name}</td>
                   <td className="text-xs">
-                    {r.approver_role && <span className="capitalize text-[#A67C00]">{r.approver_role}</span>}
+                    {r.approver_role && <span className="capitalize text-[var(--gold)]">{r.approver_role}</span>}
                     {r.approver_emails?.length ? <div>{r.approver_emails.join(", ")}</div> : null}
                   </td>
                   <td><StatusBadge status={r.status} /></td>
-                  <td className="text-xs">{formatDateTime(r.requested_at)}<div className="text-[#5E5E5A]">by {r.requested_by}</div></td>
+                  <td className="text-xs">{formatDateTime(r.requested_at)}<div className="text-[var(--muted)]">by {r.requested_by}</div></td>
                   <td>
                     {r.status === "Pending" && (
                       <div className="flex gap-1">
@@ -68,12 +68,12 @@ export default function ApprovalsPage() {
                       </div>
                     )}
                     {r.status !== "Pending" && r.actioned_by && (
-                      <div className="text-xs text-[#5E5E5A]">{r.actioned_by} · {formatDateTime(r.actioned_at)}</div>
+                      <div className="text-xs text-[var(--muted)]">{r.actioned_by} · {formatDateTime(r.actioned_at)}</div>
                     )}
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={7} className="text-center py-12 text-[#5E5E5A]">No requests in this category</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="text-center py-12 text-[var(--muted)]">No requests in this category</td></tr>}
             </tbody>
           </table>
         </div>

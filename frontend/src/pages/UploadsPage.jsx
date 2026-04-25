@@ -59,13 +59,13 @@ export default function UploadsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-4">
             <div className="tile p-5">
-              <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-2">Step 1 · Choose entity</div>
+              <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Step 1 · Choose entity</div>
               <div className="flex flex-wrap gap-2">
                 {ENTITIES.map((e) => (
                   <button
                     key={e.key}
                     onClick={() => setEntity(e.key)}
-                    className={`px-3 py-2 text-xs font-medium border ${entity === e.key ? "bg-[#111110] text-white border-[#111110]" : "border-[#E5E5E0] text-[#5E5E5A] hover:border-[#A67C00]"}`}
+                    className={`px-3 py-2 text-xs font-medium border ${entity === e.key ? "bg-[var(--text)] text-[var(--surface)] border-[#111110]" : "border-[var(--border)] text-[var(--muted)] hover:border-[var(--gold)]"}`}
                     data-testid={`entity-${e.key}`}
                   >
                     {e.label}
@@ -77,8 +77,8 @@ export default function UploadsPage() {
             <div className="tile p-5">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <div className="text-[10px] tracking-overline text-[#5E5E5A]">Step 2 · Download template</div>
-                  <p className="text-sm text-[#5E5E5A]">Get the empty Excel template for <span className="font-semibold">{entity}</span>.</p>
+                  <div className="text-[10px] tracking-overline text-[var(--muted)]">Step 2 · Download template</div>
+                  <p className="text-sm text-[var(--muted)]">Get the empty Excel template for <span className="font-semibold">{entity}</span>.</p>
                 </div>
                 <button className="btn-secondary text-xs flex items-center gap-1" onClick={downloadTemplate} data-testid="download-template-btn">
                   <DownloadSimple size={12} /> Download Template
@@ -87,16 +87,16 @@ export default function UploadsPage() {
             </div>
 
             <div
-              className={`tile p-10 border-2 border-dashed transition-all ${drag ? "border-[#A67C00] bg-[#fdf6e3]" : "border-[#E5E5E0]"}`}
+              className={`tile p-10 border-2 border-dashed transition-all ${drag ? "border-[var(--gold)] bg-[color-mix(in_srgb,var(--gold)_15%,transparent)]" : "border-[var(--border)]"}`}
               onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
               onDragLeave={() => setDrag(false)}
               onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; handleFile(f); }}
               data-testid="drop-zone"
             >
               <div className="text-center">
-                <CloudArrowUp size={42} weight="duotone" className="text-[#A67C00] mx-auto" />
+                <CloudArrowUp size={42} weight="duotone" className="text-[var(--gold)] mx-auto" />
                 <div className="font-display text-lg font-bold mt-3">Step 3 · Drop your filled Excel here</div>
-                <p className="text-sm text-[#5E5E5A] mt-1">or click below to choose a file (.xlsx)</p>
+                <p className="text-sm text-[var(--muted)] mt-1">or click below to choose a file (.xlsx)</p>
                 <input
                   ref={inputRef}
                   type="file"
@@ -120,33 +120,33 @@ export default function UploadsPage() {
               <div className="tile p-5" data-testid="upload-result">
                 <div className="flex items-center gap-3 mb-3">
                   {result.error
-                    ? <WarningCircle size={22} className="text-[#991B1B]" />
+                    ? <WarningCircle size={22} className="text-[var(--danger)]" />
                     : result.failed_rows === 0
-                      ? <CheckCircle size={22} className="text-[#2E6B4A]" />
-                      : <WarningCircle size={22} className="text-[#B45309]" />}
+                      ? <CheckCircle size={22} className="text-[var(--success)]" />
+                      : <WarningCircle size={22} className="text-[var(--warning)]" />}
                   <div>
                     <div className="font-display text-lg font-bold">
                       {result.error ? "Upload failed" : "Upload complete"}
                     </div>
                     {!result.error && (
-                      <div className="text-sm text-[#5E5E5A]">
+                      <div className="text-sm text-[var(--muted)]">
                         Total {result.total_rows} · ✓ {result.success_rows} succeeded · ✗ {result.failed_rows} failed
                       </div>
                     )}
-                    {result.error && <div className="text-sm text-[#991B1B]">{result.error}</div>}
+                    {result.error && <div className="text-sm text-[var(--danger)]">{result.error}</div>}
                   </div>
                 </div>
                 {result.failures?.length > 0 && (
                   <div>
-                    <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-1">Failed Rows</div>
-                    <div className="max-h-64 overflow-y-auto border border-[#E5E5E0]">
+                    <div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Failed Rows</div>
+                    <div className="max-h-64 overflow-y-auto border border-[var(--border)]">
                       <table className="tbl">
                         <thead><tr><th>Row</th><th>Errors</th></tr></thead>
                         <tbody>
                           {result.failures.map((f, i) => (
                             <tr key={i}>
                               <td className="font-mono">{f.row}</td>
-                              <td className="text-[#991B1B] text-xs">{(f.errors || []).join("; ")}</td>
+                              <td className="text-[var(--danger)] text-xs">{(f.errors || []).join("; ")}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -161,25 +161,25 @@ export default function UploadsPage() {
           <div className="tile p-5">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="text-[10px] tracking-overline text-[#5E5E5A]">Recent Upload Logs</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Recent Upload Logs</div>
                 <div className="font-display font-bold">Last 200 jobs</div>
               </div>
-              <FileXls size={18} weight="duotone" className="text-[#A67C00]" />
+              <FileXls size={18} weight="duotone" className="text-[var(--gold)]" />
             </div>
             <div className="space-y-3 max-h-[460px] overflow-y-auto">
               {logs.map((l) => (
-                <div key={l.id} className="border border-[#E5E5E0] p-3" data-testid={`log-${l.id}`}>
+                <div key={l.id} className="border border-[var(--border)] p-3" data-testid={`log-${l.id}`}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold uppercase tracking-wider text-[#A67C00]">{l.entity_type}</span>
-                    <span className="text-[#5E5E5A]">{formatDateTime(l.uploaded_at)}</span>
+                    <span className="font-semibold uppercase tracking-wider text-[var(--gold)]">{l.entity_type}</span>
+                    <span className="text-[var(--muted)]">{formatDateTime(l.uploaded_at)}</span>
                   </div>
                   <div className="text-sm font-medium mt-1 truncate">{l.file_name}</div>
-                  <div className="text-xs text-[#5E5E5A] mt-1">
-                    {l.success_rows} ok / <span className="text-[#991B1B]">{l.failed_rows} failed</span> · {l.uploaded_by}
+                  <div className="text-xs text-[var(--muted)] mt-1">
+                    {l.success_rows} ok / <span className="text-[var(--danger)]">{l.failed_rows} failed</span> · {l.uploaded_by}
                   </div>
                 </div>
               ))}
-              {logs.length === 0 && <div className="text-sm text-[#5E5E5A] text-center py-6">No uploads yet</div>}
+              {logs.length === 0 && <div className="text-sm text-[var(--muted)] text-center py-6">No uploads yet</div>}
             </div>
           </div>
         </div>

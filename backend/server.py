@@ -1202,6 +1202,48 @@ async def root():
     return {"app": "CRacker Pro API", "status": "ok"}
 
 
+# ============================================================
+# SETTINGS (admin)  - FX rate INR per 1 USD, default currency
+# ============================================================
+DEFAULT_SETTINGS = {
+    "id": "global",
+    "inr_per_usd": 83.0,
+    "default_currency": "INR",
+    "updated_at": now_iso(),
+    "updated_by": None,
+}
+
+
+@api.get("/settings")
+async def get_settings(_: dict = Depends(get_current_user)):
+    s = await db.settings.find_one({"id": "global"}, {"_id": 0})
+    if not s:
+        await db.settings.insert_one({**DEFAULT_SETTINGS})
+        s = {**DEFAULT_SETTINGS}
+    return s
+
+
+@api.put("/settings")
+async def update_settings(payload: dict, user: dict = Depends(require_role("admin"))):
+    allowed = {"inr_per_usd", "default_currency"}
+    upd = {k: v for k, v in payload.items() if k in allowed}
+    if "inr_per_usd" in upd:
+        try:
+            upd["inr_per_usd"] = float(upd["inr_per_usd"])
+            if upd["inr_per_usd"] <= 0:
+                raise ValueError
+        except Exception:
+            raise HTTPException(400, "inr_per_usd must be a positive number")
+    if "default_currency" in upd and upd["default_currency"] not in ("INR", "USD"):
+        raise HTTPException(400, "default_currency must be INR or USD")
+    upd["updated_at"] = now_iso()
+    upd["updated_by"] = user["email"]
+    await db.settings.update_one({"id": "global"}, {"$set": upd, "$setOnInsert": {"id": "global"}}, upsert=True)
+    await write_audit(db, entity_type="settings", entity_id="global", action="update", user=user, field_changes=upd)
+    s = await db.settings.find_one({"id": "global"}, {"_id": 0})
+    return s
+
+
 # Register router & CORS
 app.include_router(api)
 

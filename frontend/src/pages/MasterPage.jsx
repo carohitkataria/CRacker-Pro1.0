@@ -73,7 +73,7 @@ const ENTITIES = {
 
 export default function MasterPage({ entityKey }) {
   const meta = ENTITIES[entityKey];
-  const { mode } = useCurrency();
+  const { mode, inrPerUsd } = useCurrency();
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [show, setShow] = useState(false);
@@ -135,7 +135,7 @@ export default function MasterPage({ entityKey }) {
                   >
                     {meta.columns.map((c) => (
                       <td key={c.key} className={c.type === "currency" ? "num" : ""}>
-                        {c.type === "currency" ? formatCurrency(r[c.key], mode) : r[c.key] || "—"}
+                        {c.type === "currency" ? formatCurrency(r[c.key], mode, inrPerUsd) : r[c.key] || "—"}
                       </td>
                     ))}
                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -145,7 +145,7 @@ export default function MasterPage({ entityKey }) {
                   </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={meta.columns.length + 1} className="text-center py-12 text-[#5E5E5A]">No records yet</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={meta.columns.length + 1} className="text-center py-12 text-[var(--muted)]">No records yet</td></tr>}
             </tbody>
           </table>
         </div>
@@ -175,15 +175,15 @@ function Modal({ meta, entity, onClose, onSaved }) {
   };
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" data-testid="master-modal">
-      <form onSubmit={submit} className="bg-white border border-[#E5E5E0] w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="p-5 border-b border-[#E5E5E0] flex justify-between items-center">
+      <form onSubmit={submit} className="bg-[var(--surface)] border border-[var(--border)] w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="p-5 border-b border-[var(--border)] flex justify-between items-center">
           <h3 className="font-display text-lg font-bold">{entity ? "Edit" : "New"} {meta.label.replace(/s$/, "")}</h3>
           <button type="button" className="btn-ghost" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="p-5 space-y-3">
           {meta.fields.map((f) => (
             <div key={f.key}>
-              <label className="block text-[10px] tracking-overline text-[#5E5E5A] mb-1">{f.label}{f.required && " *"}</label>
+              <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1">{f.label}{f.required && " *"}</label>
               {f.textarea ? (
                 <textarea className="input" rows={2} value={form[f.key] || ""} onChange={(e) => set(f.key, e.target.value)} />
               ) : (
@@ -198,9 +198,9 @@ function Modal({ meta, entity, onClose, onSaved }) {
               )}
             </div>
           ))}
-          {err && <div className="text-xs text-[#991B1B] bg-[#fdeaea] p-2 border border-[#f1c2c2]">{err}</div>}
+          {err && <div className="text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-2 border border-[color-mix(in_srgb,var(--danger)_30%,transparent)]">{err}</div>}
         </div>
-        <div className="p-5 border-t border-[#E5E5E0] flex justify-end gap-2">
+        <div className="p-5 border-t border-[var(--border)] flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn-primary" disabled={busy} data-testid="master-modal-submit">{busy ? "Saving…" : "Save"}</button>
         </div>

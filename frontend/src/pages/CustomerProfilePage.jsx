@@ -11,7 +11,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 export default function CustomerProfilePage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { mode } = useCurrency();
+  const { mode, inrPerUsd } = useCurrency();
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export default function CustomerProfilePage() {
       <PageHeader
         title={customer.customer_name}
         subtitle={`SAP ${customer.sap_customer_code || "—"}  ·  ${customer.country || ""}`}
-        breadcrumb={<><button onClick={() => navigate("/customers")} className="hover:text-[#A67C00] inline-flex items-center gap-1"><ArrowLeft size={11}/> ALL CUSTOMERS</button> · PROFILE</>}
+        breadcrumb={<><button onClick={() => navigate("/customers")} className="hover:text-[var(--gold)] inline-flex items-center gap-1"><ArrowLeft size={11}/> ALL CUSTOMERS</button> · PROFILE</>}
         testid="customer-profile-header"
       />
 
@@ -35,28 +35,28 @@ export default function CustomerProfilePage() {
         {/* Contact + risk strip */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="tile p-5">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A]">Contact</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">Contact</div>
             <div className="font-display font-bold mt-1">{customer.contact_person || "—"}</div>
-            <div className="text-xs text-[#5E5E5A] mt-2 flex items-center gap-1.5"><EnvelopeSimple size={12}/> {customer.email || "—"}</div>
-            <div className="text-xs text-[#5E5E5A] mt-1 flex items-center gap-1.5"><Phone size={12}/> {customer.phone || "—"}</div>
+            <div className="text-xs text-[var(--muted)] mt-2 flex items-center gap-1.5"><EnvelopeSimple size={12}/> {customer.email || "—"}</div>
+            <div className="text-xs text-[var(--muted)] mt-1 flex items-center gap-1.5"><Phone size={12}/> {customer.phone || "—"}</div>
           </div>
           <div className="tile p-5">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A]">SAP Outstanding</div>
-            <div className="font-mono font-semibold text-2xl mt-1 text-[#A67C00]">{formatCurrency(customer.balance_outstanding_sap, mode)}</div>
-            <div className="text-xs text-[#5E5E5A] mt-1">Sync from SAP master</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">SAP Outstanding</div>
+            <div className="font-mono font-semibold text-2xl mt-1 text-[var(--gold)]">{formatCurrency(customer.balance_outstanding_sap, mode, inrPerUsd)}</div>
+            <div className="text-xs text-[var(--muted)] mt-1">Sync from SAP master</div>
           </div>
           <div className={`tile p-5 ${customer.risk_notes ? "border-[#B45309]" : ""}`}>
-            <div className="text-[10px] tracking-overline text-[#5E5E5A] flex items-center gap-1"><WarningOctagon size={12}/> Risk Notes</div>
-            <div className="text-sm mt-1 text-[#111110]">{customer.risk_notes || "No risk flagged"}</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)] flex items-center gap-1"><WarningOctagon size={12}/> Risk Notes</div>
+            <div className="text-sm mt-1 text-[var(--text)]">{customer.risk_notes || "No risk flagged"}</div>
           </div>
         </div>
 
         {/* Totals */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Stat label="Projects" value={totals.project_count} />
-          <Stat label="Total PO" value={formatCurrency(totals.total_po, mode)} />
-          <Stat label="Revenue" value={formatCurrency(totals.total_revenue, mode)} />
-          <Stat label="Margin" value={formatCurrency(totals.total_margin, mode)} accent />
+          <Stat label="Total PO" value={formatCurrency(totals.total_po, mode, inrPerUsd)} />
+          <Stat label="Revenue" value={formatCurrency(totals.total_revenue, mode, inrPerUsd)} />
+          <Stat label="Margin" value={formatCurrency(totals.total_margin, mode, inrPerUsd)} accent />
           <Stat label="Margin %" value={`${(totals.margin_pct || 0).toFixed(1)}%`}
                 accent={totals.margin_pct >= 15}
                 danger={totals.margin_pct < 15} />
@@ -65,24 +65,24 @@ export default function CustomerProfilePage() {
         {/* Billing + Ageing */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="tile p-5">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A]">Billing Position</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">Billing Position</div>
             <div className="font-display text-lg font-bold mb-3">Recognized vs Billed vs Unbilled</div>
             <div className="space-y-2">
-              <Row label="Recognized" value={formatCurrency(billing.recognized, mode)} />
-              <Row label="Billed" value={formatCurrency(billing.billed, mode)} />
-              <Row label="Unbilled" value={formatCurrency(billing.unbilled, mode)} accent />
+              <Row label="Recognized" value={formatCurrency(billing.recognized, mode, inrPerUsd)} />
+              <Row label="Billed" value={formatCurrency(billing.billed, mode, inrPerUsd)} />
+              <Row label="Unbilled" value={formatCurrency(billing.unbilled, mode, inrPerUsd)} accent />
             </div>
           </div>
 
           <div className="tile p-5" data-testid="ageing-chart">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A]">Unbilled Ageing</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">Unbilled Ageing</div>
             <div className="font-display text-lg font-bold mb-3">Recognized but Not Billed (days)</div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={ageing_buckets}>
                 <CartesianGrid strokeDasharray="2 4" stroke="#E5E5E0" />
                 <XAxis dataKey="bucket" stroke="#5E5E5A" fontSize={11} />
                 <YAxis stroke="#5E5E5A" fontSize={11} />
-                <Tooltip formatter={(v) => formatCurrency(v, mode)} contentStyle={{ borderRadius: 2, borderColor: "#E5E5E0", fontSize: 12 }} />
+                <Tooltip formatter={(v) => formatCurrency(v, mode, inrPerUsd)} contentStyle={{ borderRadius: 2, borderColor: "#E5E5E0", fontSize: 12 }} />
                 <Bar dataKey="amount">
                   {ageing_buckets.map((b, i) => (
                     <Cell key={i} fill={b.bucket === "90+" ? "#991B1B" : b.bucket === "61-90" ? "#B45309" : "#A67C00"} />
@@ -97,10 +97,10 @@ export default function CustomerProfilePage() {
         <div className="tile p-5" data-testid="customer-projects-table">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="text-[10px] tracking-overline text-[#5E5E5A]">Linked Projects</div>
+              <div className="text-[10px] tracking-overline text-[var(--muted)]">Linked Projects</div>
               <div className="font-display text-lg font-bold">{projects.length} project(s)</div>
             </div>
-            <Buildings size={18} weight="duotone" className="text-[#A67C00]" />
+            <Buildings size={18} weight="duotone" className="text-[var(--gold)]" />
           </div>
           <table className="tbl">
             <thead>
@@ -116,13 +116,13 @@ export default function CustomerProfilePage() {
                   <td className="font-mono text-xs">{p.wbs_element || "—"}</td>
                   <td><StatusBadge status={p.current_stage} /></td>
                   <td><StatusBadge status={p.approval_status} /></td>
-                  <td className="num">{formatCurrency(p.po_value, mode)}</td>
-                  <td className={`num ${(p.margin_pct || 0) < 15 ? "text-[#991B1B]" : ""}`}>{(p.margin_pct || 0).toFixed(1)}%</td>
+                  <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
+                  <td className={`num ${(p.margin_pct || 0) < 15 ? "text-[var(--danger)]" : ""}`}>{(p.margin_pct || 0).toFixed(1)}%</td>
                   <td>{formatDate(p.start_date)}</td>
                   <td>{formatDate(p.end_date)}</td>
                 </tr>
               ))}
-              {projects.length === 0 && <tr><td colSpan={8} className="text-center py-8 text-[#5E5E5A]">No linked projects</td></tr>}
+              {projects.length === 0 && <tr><td colSpan={8} className="text-center py-8 text-[var(--muted)]">No linked projects</td></tr>}
             </tbody>
           </table>
         </div>
@@ -130,12 +130,12 @@ export default function CustomerProfilePage() {
         {/* Stage distribution */}
         {stage_distribution.length > 0 && (
           <div className="tile p-5">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A]">Stage Distribution</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">Stage Distribution</div>
             <div className="font-display text-lg font-bold mb-3">Where this customer's projects sit today</div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {stage_distribution.map((s) => (
-                <div key={s.stage} className="border border-[#E5E5E0] p-3">
-                  <div className="text-[10px] tracking-overline text-[#5E5E5A]">{s.stage}</div>
+                <div key={s.stage} className="border border-[var(--border)] p-3">
+                  <div className="text-[10px] tracking-overline text-[var(--muted)]">{s.stage}</div>
                   <div className="font-mono text-2xl font-semibold mt-1">{s.count}</div>
                 </div>
               ))}
@@ -150,17 +150,17 @@ export default function CustomerProfilePage() {
 function Stat({ label, value, accent, danger }) {
   return (
     <div className="tile p-4">
-      <div className="text-[10px] tracking-overline text-[#5E5E5A]">{label}</div>
-      <div className={`font-mono font-semibold text-xl mt-1 ${accent ? "text-[#A67C00]" : danger ? "text-[#991B1B]" : "text-[#111110]"}`}>{value}</div>
+      <div className="text-[10px] tracking-overline text-[var(--muted)]">{label}</div>
+      <div className={`font-mono font-semibold text-xl mt-1 ${accent ? "text-[var(--gold)]" : danger ? "text-[var(--danger)]" : "text-[var(--text)]"}`}>{value}</div>
     </div>
   );
 }
 
 function Row({ label, value, accent }) {
   return (
-    <div className="flex items-center justify-between text-sm border-b border-[#E5E5E0] pb-2">
-      <span className="text-[#5E5E5A]">{label}</span>
-      <span className={`font-mono font-semibold ${accent ? "text-[#A67C00]" : ""}`}>{value}</span>
+    <div className="flex items-center justify-between text-sm border-b border-[var(--border)] pb-2">
+      <span className="text-[var(--muted)]">{label}</span>
+      <span className={`font-mono font-semibold ${accent ? "text-[var(--gold)]" : ""}`}>{value}</span>
     </div>
   );
 }

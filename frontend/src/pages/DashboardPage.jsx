@@ -10,6 +10,7 @@ import {
   LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell,
 } from "recharts";
 
+// eslint-disable-next-line no-unused-vars
 function KpiTile({ label, value, sub, icon: Icon, onClick, accent, testid }) {
   return (
     <div
@@ -18,17 +19,17 @@ function KpiTile({ label, value, sub, icon: Icon, onClick, accent, testid }) {
       data-testid={testid}
     >
       <div className="flex items-start justify-between">
-        <div className="text-[10px] tracking-overline text-[#5E5E5A]">{label}</div>
-        {Icon && <Icon size={16} weight="duotone" className="text-[#A67C00]" />}
+        <div className="text-[10px] tracking-overline text-[var(--muted)]">{label}</div>
+        {Icon && <Icon size={16} weight="duotone" className="text-[var(--gold)]" />}
       </div>
       <div>
-        <div className={`font-mono font-semibold tracking-tight ${accent ? "text-[#A67C00]" : "text-[#111110]"} text-3xl mt-2`}>
+        <div className={`font-mono font-semibold tracking-tight ${accent ? "text-[var(--gold)]" : "text-[var(--text)]"} text-3xl mt-2`}>
           {value}
         </div>
-        {sub && <div className="text-[11px] text-[#5E5E5A] mt-1">{sub}</div>}
+        {sub && <div className="text-[11px] text-[var(--muted)] mt-1">{sub}</div>}
       </div>
       {onClick && (
-        <div className="text-[#A67C00] flex items-center gap-1 text-[11px] tracking-overline mt-2 opacity-0 group-hover:opacity-100">
+        <div className="text-[var(--gold)] flex items-center gap-1 text-[11px] tracking-overline mt-2 opacity-0 group-hover:opacity-100">
           DRILL DOWN <ArrowUpRight size={12} />
         </div>
       )}
@@ -37,7 +38,7 @@ function KpiTile({ label, value, sub, icon: Icon, onClick, accent, testid }) {
 }
 
 export default function DashboardPage() {
-  const { mode } = useCurrency();
+  const { mode, inrPerUsd } = useCurrency();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
 
@@ -87,15 +88,15 @@ export default function DashboardPage() {
           />
           <KpiTile
             label="Total PO Value"
-            value={formatCurrency(totals.total_po_value, mode)}
-            sub={`Revenue ${formatCurrency(totals.total_revenue, mode)}`}
+            value={formatCurrency(totals.total_po_value, mode, inrPerUsd)}
+            sub={`Revenue ${formatCurrency(totals.total_revenue, mode, inrPerUsd)}`}
             icon={TrendUp}
             onClick={() => navigate("/projects")}
             testid="kpi-total-po"
           />
           <KpiTile
             label="Total Margin"
-            value={formatCurrency(totals.total_margin, mode)}
+            value={formatCurrency(totals.total_margin, mode, inrPerUsd)}
             sub={`${totals.margin_pct.toFixed(1)}% blended margin`}
             icon={Receipt}
             accent
@@ -115,13 +116,13 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KpiTile
             label="Recognized Revenue"
-            value={formatCurrency(recognized_unbilled.recognized, mode)}
-            sub={`Billed ${formatCurrency(recognized_unbilled.billed, mode)}`}
+            value={formatCurrency(recognized_unbilled.recognized, mode, inrPerUsd)}
+            sub={`Billed ${formatCurrency(recognized_unbilled.billed, mode, inrPerUsd)}`}
             testid="kpi-recognized"
           />
           <KpiTile
             label="Recognized but Unbilled"
-            value={formatCurrency(recognized_unbilled.unbilled, mode)}
+            value={formatCurrency(recognized_unbilled.unbilled, mode, inrPerUsd)}
             sub="Working capital exposure"
             accent
             testid="kpi-unbilled"
@@ -141,7 +142,7 @@ export default function DashboardPage() {
           <div className="tile p-5 lg:col-span-2" data-testid="chart-monthly-billing">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] tracking-overline text-[#5E5E5A]">Monthly Billing Trend</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Monthly Billing Trend</div>
                 <div className="font-display text-lg font-bold">Recognized vs Billed (Cr)</div>
               </div>
             </div>
@@ -159,7 +160,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="tile p-5" data-testid="chart-stage-funnel">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-1">Pipeline Funnel</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Pipeline Funnel</div>
             <div className="font-display text-lg font-bold mb-4">Stage Distribution</div>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={stageChart} layout="vertical" margin={{ left: 8, right: 16 }}>
@@ -178,10 +179,10 @@ export default function DashboardPage() {
           <div className="tile p-5" data-testid="top-customers-tile">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] tracking-overline text-[#5E5E5A]">Top Customers</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Top Customers</div>
                 <div className="font-display text-lg font-bold">By PO Value</div>
               </div>
-              <Buildings size={18} weight="duotone" className="text-[#A67C00]" />
+              <Buildings size={18} weight="duotone" className="text-[var(--gold)]" />
             </div>
             <table className="tbl">
               <thead>
@@ -191,12 +192,12 @@ export default function DashboardPage() {
                 {top_customers.map((c) => (
                   <tr key={c.customer_id}>
                     <td>{c.customer_name}</td>
-                    <td className="num">{formatCurrency(c.po_value, mode)}</td>
+                    <td className="num">{formatCurrency(c.po_value, mode, inrPerUsd)}</td>
                     <td className="num">{c.count}</td>
                   </tr>
                 ))}
                 {top_customers.length === 0 && (
-                  <tr><td colSpan={3} className="text-[#5E5E5A] text-center py-4">No data</td></tr>
+                  <tr><td colSpan={3} className="text-[var(--muted)] text-center py-4">No data</td></tr>
                 )}
               </tbody>
             </table>
@@ -205,10 +206,10 @@ export default function DashboardPage() {
           <div className="tile p-5" data-testid="vendor-exposure-tile">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] tracking-overline text-[#5E5E5A]">Vendor Exposure</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Vendor Exposure</div>
                 <div className="font-display text-lg font-bold">By Cost Spend</div>
               </div>
-              <Truck size={18} weight="duotone" className="text-[#A67C00]" />
+              <Truck size={18} weight="duotone" className="text-[var(--gold)]" />
             </div>
             <div className="grid grid-cols-2 gap-4 items-center">
               <ResponsiveContainer width="100%" height={180}>
@@ -226,10 +227,10 @@ export default function DashboardPage() {
                       <span className="w-2 h-2" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
                       <span className="truncate max-w-[120px]">{v.supplier_name}</span>
                     </div>
-                    <span className="font-mono">{formatCurrency(v.amount, mode)}</span>
+                    <span className="font-mono">{formatCurrency(v.amount, mode, inrPerUsd)}</span>
                   </div>
                 ))}
-                {vendor_exposure.length === 0 && <div className="text-xs text-[#5E5E5A]">No cost data yet</div>}
+                {vendor_exposure.length === 0 && <div className="text-xs text-[var(--muted)]">No cost data yet</div>}
               </div>
             </div>
           </div>
@@ -240,7 +241,7 @@ export default function DashboardPage() {
           <div className="tile p-5" data-testid="delayed-projects-tile">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] tracking-overline text-[#5E5E5A]">Delayed Projects</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Delayed Projects</div>
                 <div className="font-display text-lg font-bold">Past End Date · Not Closed</div>
               </div>
             </div>
@@ -249,14 +250,14 @@ export default function DashboardPage() {
               <tbody>
                 {delayed_projects.slice(0, 6).map((p) => (
                   <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)}>
-                    <td className="text-[#111110]">{p.project_name}</td>
+                    <td className="text-[var(--text)]">{p.project_name}</td>
                     <td>{p.customer_name || "—"}</td>
-                    <td className="text-[#991B1B]">{p.end_date}</td>
-                    <td className="num">{formatCurrency(p.po_value, mode)}</td>
+                    <td className="text-[var(--danger)]">{p.end_date}</td>
+                    <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
                   </tr>
                 ))}
                 {delayed_projects.length === 0 && (
-                  <tr><td colSpan={4} className="text-[#5E5E5A] text-center py-6">No delayed projects 🎯</td></tr>
+                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">No delayed projects 🎯</td></tr>
                 )}
               </tbody>
             </table>
@@ -265,7 +266,7 @@ export default function DashboardPage() {
           <div className="tile p-5" data-testid="low-margin-tile">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] tracking-overline text-[#5E5E5A]">Low Margin Projects</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Low Margin Projects</div>
                 <div className="font-display text-lg font-bold">Margin &lt; 15%</div>
               </div>
             </div>
@@ -276,12 +277,12 @@ export default function DashboardPage() {
                   <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)}>
                     <td>{p.project_name}</td>
                     <td>{p.current_stage}</td>
-                    <td className="num text-[#991B1B]">{(p.margin_pct || 0).toFixed(1)}%</td>
-                    <td className="num">{formatCurrency(p.po_value, mode)}</td>
+                    <td className="num text-[var(--danger)]">{(p.margin_pct || 0).toFixed(1)}%</td>
+                    <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
                   </tr>
                 ))}
                 {low_margin_projects.length === 0 && (
-                  <tr><td colSpan={4} className="text-[#5E5E5A] text-center py-6">All projects healthy ✓</td></tr>
+                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">All projects healthy ✓</td></tr>
                 )}
               </tbody>
             </table>

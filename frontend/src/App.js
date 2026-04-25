@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { CurrencyProvider } from "@/lib/currency";
+import { ThemeProvider } from "@/lib/theme";
 import AppLayout from "@/components/AppLayout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -15,13 +16,14 @@ import ApprovalsPage from "@/pages/ApprovalsPage";
 import AuditPage from "@/pages/AuditPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import ApprovalMatrixPage from "@/pages/ApprovalMatrixPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 function Protected({ children, adminOnly }) {
   const { user } = useAuth();
   if (user === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8]">
-        <div className="text-[#5E5E5A] tracking-overline text-xs">Loading…</div>
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <div className="text-[var(--muted)] tracking-overline text-xs">Loading…</div>
       </div>
     );
   }
@@ -35,25 +37,28 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
-          <CurrencyProvider>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
-              <Route path="/projects" element={<Protected><ProjectsPage /></Protected>} />
-              <Route path="/projects/:id" element={<Protected><ProjectDetailPage /></Protected>} />
-              <Route path="/customers" element={<Protected><MasterPage entityKey="customers" /></Protected>} />
-              <Route path="/customers/:id" element={<Protected><CustomerProfilePage /></Protected>} />
-              <Route path="/suppliers" element={<Protected><MasterPage entityKey="suppliers" /></Protected>} />
-              <Route path="/employees" element={<Protected><MasterPage entityKey="employees" /></Protected>} />
-              <Route path="/uploads" element={<Protected><UploadsPage /></Protected>} />
-              <Route path="/approvals" element={<Protected><ApprovalsPage /></Protected>} />
-              <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
-              <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />
-              <Route path="/admin/approval-matrix" element={<Protected adminOnly><ApprovalMatrixPage /></Protected>} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </CurrencyProvider>
+          <ThemeProvider>
+            <CurrencyProvider>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
+                <Route path="/projects" element={<Protected><ProjectsPage /></Protected>} />
+                <Route path="/projects/:id" element={<Protected><ProjectDetailPage /></Protected>} />
+                <Route path="/customers" element={<Protected><MasterPage entityKey="customers" /></Protected>} />
+                <Route path="/customers/:id" element={<Protected><CustomerProfilePage /></Protected>} />
+                <Route path="/suppliers" element={<Protected><MasterPage entityKey="suppliers" /></Protected>} />
+                <Route path="/employees" element={<Protected><MasterPage entityKey="employees" /></Protected>} />
+                <Route path="/uploads" element={<Protected><UploadsPage /></Protected>} />
+                <Route path="/approvals" element={<Protected><ApprovalsPage /></Protected>} />
+                <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
+                <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />
+                <Route path="/admin/approval-matrix" element={<Protected adminOnly><ApprovalMatrixPage /></Protected>} />
+                <Route path="/admin/settings" element={<Protected adminOnly><SettingsPage /></Protected>} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </CurrencyProvider>
+          </ThemeProvider>
         </AuthProvider>
       </BrowserRouter>
     </div>

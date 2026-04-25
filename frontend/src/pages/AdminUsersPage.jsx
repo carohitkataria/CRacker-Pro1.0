@@ -79,7 +79,7 @@ function UserModal({ user, onClose, onSaved }) {
   };
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white border border-[#E5E5E0] w-full max-w-md" data-testid="user-modal">
+      <form onSubmit={submit} className="bg-[var(--surface)] border border-[var(--border)] w-full max-w-md" data-testid="user-modal">
         <div className="p-5 border-b flex justify-between items-center"><h3 className="font-display text-lg font-bold">{isEdit ? "Edit" : "New"} User</h3><button type="button" onClick={onClose}><X size={16} /></button></div>
         <div className="p-5 space-y-3">
           <input className="input" placeholder="Full name" required value={form.name} onChange={(e) => set("name", e.target.value)} data-testid="user-name" />
@@ -90,7 +90,7 @@ function UserModal({ user, onClose, onSaved }) {
           </select>
           <input className="input" placeholder="Location" value={form.location || ""} onChange={(e) => set("location", e.target.value)} />
           <input className="input" placeholder="Reporting manager email" value={form.reporting_manager_email || ""} onChange={(e) => set("reporting_manager_email", e.target.value)} />
-          {err && <div className="text-xs text-[#991B1B] bg-[#fdeaea] border border-[#f1c2c2] p-2">{err}</div>}
+          {err && <div className="text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] p-2">{err}</div>}
         </div>
         <div className="p-5 border-t flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -112,11 +112,11 @@ function ResetModal({ user, onClose }) {
   };
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white border w-full max-w-sm p-5 space-y-3" data-testid="reset-modal">
+      <form onSubmit={submit} className="bg-[var(--surface)] border w-full max-w-sm p-5 space-y-3" data-testid="reset-modal">
         <h3 className="font-display text-lg font-bold">Reset password for</h3>
-        <div className="text-sm text-[#5E5E5A]">{user.email}</div>
+        <div className="text-sm text-[var(--muted)]">{user.email}</div>
         <input type="password" className="input" required minLength={6} placeholder="New password" value={pwd} onChange={(e) => setPwd(e.target.value)} data-testid="reset-password-input" />
-        {err && <div className="text-xs text-[#991B1B]">{err}</div>}
+        {err && <div className="text-xs text-[var(--danger)]">{err}</div>}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={busy} data-testid="reset-submit">{busy ? "Saving…" : "Reset"}</button>

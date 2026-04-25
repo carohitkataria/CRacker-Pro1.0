@@ -14,7 +14,7 @@ const TABS = ["Overview", "Revenue", "Cost", "Milestones", "Documents", "Queries
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { mode } = useCurrency();
+  const { mode, inrPerUsd } = useCurrency();
 
   const [project, setProject] = useState(null);
   const [tab, setTab] = useState("Overview");
@@ -65,7 +65,7 @@ export default function ProjectDetailPage() {
       <PageHeader
         title={project.project_name}
         subtitle={`${project.wbs_element || ""}  ·  ${project.customer_name || ""}`}
-        breadcrumb={<><button onClick={() => navigate("/projects")} className="hover:text-[#A67C00] inline-flex items-center gap-1"><ArrowLeft size={11} /> ALL PROJECTS</button> · {project.current_stage.toUpperCase()}</>}
+        breadcrumb={<><button onClick={() => navigate("/projects")} className="hover:text-[var(--gold)] inline-flex items-center gap-1"><ArrowLeft size={11} /> ALL PROJECTS</button> · {project.current_stage.toUpperCase()}</>}
         actions={
           <div className="flex items-center gap-2">
             {prevStage && (
@@ -86,28 +86,28 @@ export default function ProjectDetailPage() {
       />
 
       {/* Stage tracker */}
-      <div className="px-8 py-4 border-b border-[#E5E5E0] bg-white">
+      <div className="px-8 py-4 border-b border-[var(--border)] bg-[var(--surface)]">
         <StageTracker current={project.current_stage} />
-        {error && <div className="text-xs text-[#991B1B] bg-[#fdeaea] p-2 mt-3 border border-[#f1c2c2]">{error}</div>}
+        {error && <div className="text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-2 mt-3 border border-[color-mix(in_srgb,var(--danger)_30%,transparent)]">{error}</div>}
       </div>
 
       {/* Quick stats */}
       <div className="px-8 py-5 grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Stat label="PO Value" value={formatCurrency(project.po_value, mode)} />
-        <Stat label="Revenue Plan" value={formatCurrency(project.revenue_total, mode)} />
-        <Stat label="Cost Plan" value={formatCurrency(project.cost_total, mode)} />
-        <Stat label="Margin" value={formatCurrency(project.margin_total, mode)} accent />
+        <Stat label="PO Value" value={formatCurrency(project.po_value, mode, inrPerUsd)} />
+        <Stat label="Revenue Plan" value={formatCurrency(project.revenue_total, mode, inrPerUsd)} />
+        <Stat label="Cost Plan" value={formatCurrency(project.cost_total, mode, inrPerUsd)} />
+        <Stat label="Margin" value={formatCurrency(project.margin_total, mode, inrPerUsd)} accent />
         <Stat label="Margin %" value={`${(project.margin_pct || 0).toFixed(1)}%`} accent={project.margin_pct >= 15} danger={project.margin_pct < 15} />
       </div>
 
       {/* Tabs */}
-      <div className="px-8 border-b border-[#E5E5E0] bg-white">
+      <div className="px-8 border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="flex gap-1">
           {TABS.map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 ${tab === t ? "border-[#A67C00] text-[#A67C00]" : "border-transparent text-[#5E5E5A] hover:text-[#111110]"}`}
+              className={`px-4 py-3 text-sm font-medium border-b-2 ${tab === t ? "border-[var(--gold)] text-[var(--gold)]" : "border-transparent text-[var(--muted)] hover:text-[var(--text)]"}`}
               data-testid={`tab-${t.toLowerCase()}`}
             >
               {t}
@@ -141,8 +141,8 @@ export default function ProjectDetailPage() {
 function Stat({ label, value, accent, danger }) {
   return (
     <div className="tile p-4">
-      <div className="text-[10px] tracking-overline text-[#5E5E5A]">{label}</div>
-      <div className={`font-mono font-semibold text-xl mt-1 ${accent ? "text-[#A67C00]" : danger ? "text-[#991B1B]" : "text-[#111110]"}`}>{value}</div>
+      <div className="text-[10px] tracking-overline text-[var(--muted)]">{label}</div>
+      <div className={`font-mono font-semibold text-xl mt-1 ${accent ? "text-[var(--gold)]" : danger ? "text-[var(--danger)]" : "text-[var(--text)]"}`}>{value}</div>
     </div>
   );
 }
@@ -170,16 +170,16 @@ function Overview({ project }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
       {fields.map(([k, v]) => (
-        <div key={k} className="flex justify-between border-b border-[#E5E5E0] pb-2">
-          <span className="text-xs text-[#5E5E5A] tracking-overline">{k}</span>
-          <span className="text-sm font-medium text-[#111110]">{v || "—"}</span>
+        <div key={k} className="flex justify-between border-b border-[var(--border)] pb-2">
+          <span className="text-xs text-[var(--muted)] tracking-overline">{k}</span>
+          <span className="text-sm font-medium text-[var(--text)]">{v || "—"}</span>
         </div>
       ))}
       {(project.description || project.baseline_remarks || project.finance_remarks) && (
         <div className="md:col-span-2 mt-4 grid md:grid-cols-3 gap-4">
-          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[#5E5E5A] mb-1">Description</div><div className="text-sm">{project.description || "—"}</div></div>
-          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[#5E5E5A] mb-1">Baseline Remarks</div><div className="text-sm">{project.baseline_remarks || "—"}</div></div>
-          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[#5E5E5A] mb-1">Finance Remarks</div><div className="text-sm">{project.finance_remarks || "—"}</div></div>
+          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Description</div><div className="text-sm">{project.description || "—"}</div></div>
+          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Baseline Remarks</div><div className="text-sm">{project.baseline_remarks || "—"}</div></div>
+          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Finance Remarks</div><div className="text-sm">{project.finance_remarks || "—"}</div></div>
         </div>
       )}
     </div>
@@ -204,11 +204,11 @@ function RevenueTab({ projectId, rows, reload, mode }) {
               <td>{formatDate(r.recognition_date)}</td>
               <td>{formatDate(r.billing_date)}</td>
               <td><StatusBadge status={r.is_billed ? "Approved" : "Pending"} /></td>
-              <td className="num">{formatCurrency(r.amount, mode)}</td>
+              <td className="num">{formatCurrency(r.amount, mode, inrPerUsd)}</td>
               <td><button className="btn-ghost" onClick={async () => { await api.delete(`/revenue/${r.id}`); reload(); }}><Trash size={14} /></button></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-[#5E5E5A]">No revenue lines yet</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-[var(--muted)]">No revenue lines yet</td></tr>}
         </tbody>
       </table>
       {show && <LineModal title="Revenue Line" entity="revenue" projectId={projectId} onClose={() => setShow(false)} onSaved={() => { setShow(false); reload(); }} />}
@@ -234,11 +234,11 @@ function CostTab({ projectId, rows, reload, mode }) {
               <td>{r.description || "—"}</td>
               <td>{formatDate(r.expense_date)}</td>
               <td>{r.category || "—"}</td>
-              <td className="num">{formatCurrency(r.amount, mode)}</td>
+              <td className="num">{formatCurrency(r.amount, mode, inrPerUsd)}</td>
               <td><button className="btn-ghost" onClick={async () => { await api.delete(`/cost/${r.id}`); reload(); }}><Trash size={14} /></button></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-[#5E5E5A]">No cost lines yet</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={7} className="text-center py-8 text-[var(--muted)]">No cost lines yet</td></tr>}
         </tbody>
       </table>
       {show && <LineModal title="Cost Line" entity="cost" projectId={projectId} onClose={() => setShow(false)} onSaved={() => { setShow(false); reload(); }} />}
@@ -262,7 +262,7 @@ function LineModal({ title, entity, projectId, onClose, onSaved }) {
   };
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white border border-[#E5E5E0] w-full max-w-lg p-5 space-y-3" data-testid={`${entity}-line-modal`}>
+      <form onSubmit={submit} className="bg-[var(--surface)] border border-[var(--border)] w-full max-w-lg p-5 space-y-3" data-testid={`${entity}-line-modal`}>
         <h3 className="font-display text-lg font-bold">{title}</h3>
         {entity === "revenue" ? (
           <>
@@ -304,7 +304,7 @@ function Milestones({ project, mode }) {
     <div>
       <h3 className="font-display text-lg font-bold mb-4">Milestones</h3>
       {ms.length === 0 ? (
-        <div className="tile p-8 text-center text-[#5E5E5A] text-sm">No milestones for this project</div>
+        <div className="tile p-8 text-center text-[var(--muted)] text-sm">No milestones for this project</div>
       ) : (
         <table className="tbl tile">
           <thead><tr><th>Milestone</th><th>Due Date</th><th className="num">Value</th><th>Status</th></tr></thead>
@@ -313,7 +313,7 @@ function Milestones({ project, mode }) {
               <tr key={i}>
                 <td>{m.milestone_name}</td>
                 <td>{formatDate(m.due_date)}</td>
-                <td className="num">{formatCurrency(m.value, mode)}</td>
+                <td className="num">{formatCurrency(m.value, mode, inrPerUsd)}</td>
                 <td><StatusBadge status={m.is_billed ? "Approved" : "Pending"} /></td>
               </tr>
             ))}
@@ -339,7 +339,7 @@ function AuditTab({ rows }) {
               <td className="text-xs"><pre className="font-mono text-[10px] whitespace-pre-wrap">{JSON.stringify(r.field_changes, null, 2)}</pre></td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-[#5E5E5A]">No audit events</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-[var(--muted)]">No audit events</td></tr>}
         </tbody>
       </table>
     </div>
@@ -397,39 +397,39 @@ function DocumentsTab({ projectId, reload }) {
       <h3 className="font-display text-lg font-bold mb-4">Documents</h3>
 
       <div className="tile p-5 mb-5">
-        <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-3">Upload Customer PO / Vendor PO / Contract / Any document</div>
+        <div className="text-[10px] tracking-overline text-[var(--muted)] mb-3">Upload Customer PO / Vendor PO / Contract / Any document</div>
         <div className="flex flex-wrap items-center gap-4 mb-3">
-          <label className="flex items-center gap-2 text-xs text-[#5E5E5A] cursor-pointer" data-testid="doc-parse-toggle">
+          <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer" data-testid="doc-parse-toggle">
             <input type="checkbox" checked={parse} onChange={(e) => setParse(e.target.checked)} />
             Auto-parse PDF (extract PO number, value, milestones)
           </label>
-          <label className="flex items-center gap-2 text-xs text-[#5E5E5A] cursor-pointer" data-testid="doc-apply-toggle">
+          <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer" data-testid="doc-apply-toggle">
             <input type="checkbox" checked={applyExtracted} onChange={(e) => setApplyExtracted(e.target.checked)} disabled={!parse} />
             Apply extracted fields to project (only fills empty fields)
           </label>
         </div>
         <div
-          className={`border-2 border-dashed p-8 text-center transition-all ${drag ? "border-[#A67C00] bg-[#fdf6e3]" : "border-[#E5E5E0]"}`}
+          className={`border-2 border-dashed p-8 text-center transition-all ${drag ? "border-[var(--gold)] bg-[color-mix(in_srgb,var(--gold)_15%,transparent)]" : "border-[var(--border)]"}`}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files?.[0]); }}
           data-testid="doc-drop-zone"
         >
-          <div className="text-sm text-[#5E5E5A]">Drag & drop a file here, or</div>
+          <div className="text-sm text-[var(--muted)]">Drag & drop a file here, or</div>
           <input ref={inputRef} type="file" className="hidden" onChange={(e) => upload(e.target.files?.[0])} data-testid="doc-input" />
           <button className="btn-primary mt-3" onClick={() => inputRef.current?.click()} disabled={busy} data-testid="doc-upload-btn">
             {busy ? "Uploading…" : "Choose File"}
           </button>
         </div>
-        {error && <div className="text-xs text-[#991B1B] bg-[#fdeaea] p-2 mt-3 border border-[#f1c2c2]">{error}</div>}
+        {error && <div className="text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-2 mt-3 border border-[color-mix(in_srgb,var(--danger)_30%,transparent)]">{error}</div>}
         {lastResult?.document && (
-          <div className="mt-4 border border-[#E5E5E0] p-4" data-testid="doc-last-result">
-            <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-2">Last upload</div>
+          <div className="mt-4 border border-[var(--border)] p-4" data-testid="doc-last-result">
+            <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Last upload</div>
             <div className="text-sm font-medium">{lastResult.document.file_name}</div>
             {lastResult.document.parsed && (
               <div className="mt-2 text-xs space-y-1">
-                <div className="text-[#5E5E5A] tracking-overline text-[10px]">Extracted</div>
-                <pre className="font-mono text-[11px] whitespace-pre-wrap bg-[#fafaf6] p-2 border border-[#E5E5E0]">
+                <div className="text-[var(--muted)] tracking-overline text-[10px]">Extracted</div>
+                <pre className="font-mono text-[11px] whitespace-pre-wrap bg-[var(--surface-2)] p-2 border border-[var(--border)]">
 {JSON.stringify({
   customer_po_number: lastResult.document.parsed.customer_po_number,
   po_date: lastResult.document.parsed.po_date,
@@ -440,7 +440,7 @@ function DocumentsTab({ projectId, reload }) {
 }, null, 2)}
                 </pre>
                 {Object.keys(lastResult.applied || {}).length > 0 && (
-                  <div className="text-[#2E6B4A]">✓ Applied {Object.keys(lastResult.applied).length} fields to project</div>
+                  <div className="text-[var(--success)]">✓ Applied {Object.keys(lastResult.applied).length} fields to project</div>
                 )}
               </div>
             )}
@@ -454,9 +454,9 @@ function DocumentsTab({ projectId, reload }) {
           {docs.map((d) => (
             <tr key={d.id} data-testid={`doc-row-${d.id}`}>
               <td className="font-medium">{d.file_name}</td>
-              <td className="text-xs text-[#5E5E5A]">{d.content_type}</td>
+              <td className="text-xs text-[var(--muted)]">{d.content_type}</td>
               <td className="num text-xs">{(d.size / 1024).toFixed(1)} KB</td>
-              <td className="text-xs">{formatDateTime(d.uploaded_at)}<div className="text-[#5E5E5A]">{d.uploaded_by}</div></td>
+              <td className="text-xs">{formatDateTime(d.uploaded_at)}<div className="text-[var(--muted)]">{d.uploaded_by}</div></td>
               <td>{d.parsed ? <StatusBadge status="Approved" /> : <StatusBadge status="Not Required" />}</td>
               <td className="text-right">
                 <button className="btn-ghost text-xs" onClick={() => download(d)} data-testid={`doc-download-${d.id}`}>Download</button>
@@ -466,7 +466,7 @@ function DocumentsTab({ projectId, reload }) {
               </td>
             </tr>
           ))}
-          {docs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-[#5E5E5A]">No documents attached yet</td></tr>}
+          {docs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-[var(--muted)]">No documents attached yet</td></tr>}
         </tbody>
       </table>
     </div>
@@ -502,26 +502,26 @@ function QueriesTab({ projectId }) {
             <div
               key={q.id}
               onClick={() => setActive(q)}
-              className={`tile p-4 cursor-pointer ${active?.id === q.id ? "border-[#A67C00]" : ""}`}
+              className={`tile p-4 cursor-pointer ${active?.id === q.id ? "border-[var(--gold)]" : ""}`}
               data-testid={`query-item-${q.id}`}
             >
               <div className="flex items-center justify-between">
                 <div className="font-medium">{q.subject}</div>
                 <StatusBadge status={q.status === "Open" ? "Pending" : "Approved"} />
               </div>
-              <div className="text-xs text-[#5E5E5A] mt-1 line-clamp-2">{q.description}</div>
-              <div className="text-[11px] text-[#5E5E5A] mt-2 flex items-center justify-between">
+              <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{q.description}</div>
+              <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center justify-between">
                 <span>{q.raised_by_name || q.raised_by}</span>
                 <span>{q.replies?.length || 0} {q.replies?.length === 1 ? "reply" : "replies"}</span>
               </div>
             </div>
           ))}
-          {queries.length === 0 && <div className="text-sm text-[#5E5E5A] text-center py-12">No queries yet</div>}
+          {queries.length === 0 && <div className="text-sm text-[var(--muted)] text-center py-12">No queries yet</div>}
         </div>
 
         <div className="lg:col-span-7">
           {active ? <QueryThread query={active} reload={load} setActive={setActive} /> : (
-            <div className="tile p-12 text-center text-[#5E5E5A] text-sm">Select a query to see the thread</div>
+            <div className="tile p-12 text-center text-[var(--muted)] text-sm">Select a query to see the thread</div>
           )}
         </div>
       </div>
@@ -563,7 +563,7 @@ function QueryThread({ query, reload, setActive }) {
     <div className="tile p-5" data-testid="query-thread">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <div className="text-[10px] tracking-overline text-[#5E5E5A]">Query</div>
+          <div className="text-[10px] tracking-overline text-[var(--muted)]">Query</div>
           <div className="font-display text-lg font-bold">{query.subject}</div>
         </div>
         {query.status === "Open"
@@ -571,15 +571,15 @@ function QueryThread({ query, reload, setActive }) {
           : <button className="btn-secondary text-xs" onClick={reopen} data-testid="reopen-query-btn">Reopen</button>}
       </div>
 
-      <div className="border-l-2 border-[#A67C00] pl-3 py-1 mb-4">
-        <div className="text-xs text-[#5E5E5A] mb-1">{query.raised_by_name || query.raised_by} · {formatDateTime(query.created_at)}</div>
+      <div className="border-l-2 border-[var(--gold)] pl-3 py-1 mb-4">
+        <div className="text-xs text-[var(--muted)] mb-1">{query.raised_by_name || query.raised_by} · {formatDateTime(query.created_at)}</div>
         <div className="text-sm whitespace-pre-wrap">{query.description}</div>
       </div>
 
       <div className="space-y-3 max-h-[300px] overflow-y-auto">
         {(query.replies || []).map((r) => (
-          <div key={r.id} className="border border-[#E5E5E0] p-3" data-testid={`reply-${r.id}`}>
-            <div className="text-xs text-[#5E5E5A] mb-1">{r.replied_by_name || r.replied_by} · {formatDateTime(r.replied_at)}</div>
+          <div key={r.id} className="border border-[var(--border)] p-3" data-testid={`reply-${r.id}`}>
+            <div className="text-xs text-[var(--muted)] mb-1">{r.replied_by_name || r.replied_by} · {formatDateTime(r.replied_at)}</div>
             <div className="text-sm whitespace-pre-wrap">{r.content}</div>
           </div>
         ))}
@@ -617,8 +617,8 @@ function NewQueryModal({ projectId, onClose, onSaved }) {
   };
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white border w-full max-w-lg" data-testid="query-modal">
-        <div className="p-5 border-b border-[#E5E5E0] flex justify-between items-center">
+      <form onSubmit={submit} className="bg-[var(--surface)] border w-full max-w-lg" data-testid="query-modal">
+        <div className="p-5 border-b border-[var(--border)] flex justify-between items-center">
           <h3 className="font-display text-lg font-bold">Raise a Finance Query</h3>
           <button type="button" onClick={onClose}><X size={16} /></button>
         </div>

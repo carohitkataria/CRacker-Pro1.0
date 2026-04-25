@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useCurrency } from "@/lib/currency";
+import { useTheme } from "@/lib/theme";
 import {
   ChartLineUp, FolderSimple, Database, UploadSimple, GavelIcon,
   ShieldCheck, ClockCounterClockwise, SignOut, Wallet, UsersThree, Truck, UserCircle,
+  Palette, Gear,
 } from "@phosphor-icons/react";
 
 const NAV = [
@@ -21,31 +23,37 @@ const NAV = [
 const ADMIN_NAV = [
   { to: "/admin/users", label: "User Management", icon: ShieldCheck, testid: "sidebar-admin-users" },
   { to: "/admin/approval-matrix", label: "Approval Matrix", icon: Database, testid: "sidebar-approval-matrix" },
+  { to: "/admin/settings", label: "Settings", icon: Gear, testid: "sidebar-settings" },
 ];
 
 export default function AppLayout({ children }) {
   const { user, logout } = useAuth();
   const { mode, setMode } = useCurrency();
+  const { theme, setTheme, themes } = useTheme();
   const navigate = useNavigate();
+  const [showThemes, setShowThemes] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-[#FAFAF8]">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#111110] text-white flex flex-col" data-testid="app-sidebar">
-        <div className="px-6 py-6 border-b border-white/10">
+    <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text)]">
+      <aside
+        className="w-64 flex flex-col"
+        style={{ backgroundColor: "var(--sidebar)", color: "var(--sidebar-text)" }}
+        data-testid="app-sidebar"
+      >
+        <div className="px-6 py-6 border-b" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#A67C00] flex items-center justify-center">
+            <div className="w-8 h-8 flex items-center justify-center" style={{ background: "var(--gold)" }}>
               <Wallet weight="bold" size={18} className="text-black" />
             </div>
             <div>
               <div className="font-display text-lg font-bold tracking-tight">CRacker Pro</div>
-              <div className="text-[10px] tracking-overline text-white/50">Business Finance</div>
+              <div className="text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.5)" }}>Business Finance</div>
             </div>
           </div>
         </div>
 
         <nav className="flex-1 py-3 overflow-y-auto">
-          <div className="px-4 py-2 text-[10px] tracking-overline text-white/40">Workspace</div>
+          <div className="px-4 py-2 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Workspace</div>
           {NAV.map((n) => (
             <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={n.testid}>
               <n.icon size={18} weight="duotone" />
@@ -54,7 +62,7 @@ export default function AppLayout({ children }) {
           ))}
           {user?.role === "admin" && (
             <>
-              <div className="px-4 py-2 mt-4 text-[10px] tracking-overline text-white/40">Administration</div>
+              <div className="px-4 py-2 mt-4 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Administration</div>
               {ADMIN_NAV.map((n) => (
                 <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={n.testid}>
                   <n.icon size={18} weight="duotone" />
@@ -65,36 +73,68 @@ export default function AppLayout({ children }) {
           )}
         </nav>
 
-        <div className="px-4 py-4 border-t border-white/10">
+        <div className="px-4 py-4 border-t" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold" data-testid="sidebar-user-name">{user?.name}</div>
-              <div className="text-[11px] text-white/50 capitalize">{user?.role}</div>
+              <div className="text-[11px] capitalize" style={{ color: "rgba(255,255,255,0.5)" }}>{user?.role}</div>
             </div>
-            <button className="btn-ghost text-white/70 hover:text-[#D4AF37]" onClick={async () => { await logout(); navigate("/login"); }} data-testid="logout-btn">
+            <button className="btn-ghost" style={{ color: "rgba(255,255,255,0.7)" }} onClick={async () => { await logout(); navigate("/login"); }} data-testid="logout-btn">
               <SignOut size={18} weight="bold" />
             </button>
           </div>
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <div className="h-16 px-8 border-b border-[#E5E5E0] bg-white flex items-center justify-between" data-testid="app-topbar">
-          <div className="text-xs text-[#5E5E5A] tracking-overline">Project Commercial Lifecycle</div>
-          <div className="flex items-center gap-4">
-            {/* Currency toggle */}
-            <div className="flex items-center bg-[#FAFAF8] border border-[#E5E5E0] p-0.5" data-testid="currency-toggle">
+        <div className="h-16 px-8 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between" data-testid="app-topbar">
+          <div className="text-xs text-[var(--muted)] tracking-overline">Project Commercial Lifecycle</div>
+
+          <div className="flex items-center gap-3">
+            {/* Theme picker */}
+            <div className="relative">
               <button
-                className={`px-3 py-1 text-xs font-semibold ${mode === "INR" ? "bg-white border border-[#A67C00] text-[#A67C00]" : "text-[#5E5E5A]"}`}
+                className="btn-secondary text-xs flex items-center gap-1.5"
+                onClick={() => setShowThemes((v) => !v)}
+                data-testid="theme-toggle-btn"
+                title="Change theme"
+              >
+                <Palette size={14} weight="duotone" />
+                <span className="hidden md:inline capitalize">{themes.find((t) => t.key === theme)?.label}</span>
+              </button>
+              {showThemes && (
+                <div className="absolute right-0 mt-2 w-56 bg-[var(--surface)] border border-[var(--border)] z-50 shadow-lg" data-testid="theme-menu">
+                  {themes.map((t) => (
+                    <button
+                      key={t.key}
+                      className={`w-full px-3 py-2 text-left text-sm flex items-center gap-3 hover:bg-[var(--row-hover)] ${theme === t.key ? "text-[var(--gold)] font-semibold" : ""}`}
+                      onClick={() => { setTheme(t.key); setShowThemes(false); }}
+                      data-testid={`theme-option-${t.key}`}
+                    >
+                      <div className="flex h-5 w-10">
+                        {t.swatch.map((c, i) => <div key={i} style={{ background: c, flex: 1 }} />)}
+                      </div>
+                      <div className="flex-1">
+                        <div>{t.label}</div>
+                        <div className="text-[10px] tracking-overline text-[var(--muted)]">{t.mode}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Currency toggle */}
+            <div className="flex items-center bg-[var(--surface-2)] border border-[var(--border)] p-0.5" data-testid="currency-toggle">
+              <button
+                className={`px-3 py-1 text-xs font-semibold transition-colors ${mode === "INR" ? "bg-[var(--surface)] border border-[var(--gold)] text-[var(--gold)]" : "text-[var(--muted)]"}`}
                 onClick={() => setMode("INR")}
                 data-testid="currency-inr-btn"
               >
                 ₹ Crore
               </button>
               <button
-                className={`px-3 py-1 text-xs font-semibold ${mode === "USD" ? "bg-white border border-[#A67C00] text-[#A67C00]" : "text-[#5E5E5A]"}`}
+                className={`px-3 py-1 text-xs font-semibold transition-colors ${mode === "USD" ? "bg-[var(--surface)] border border-[var(--gold)] text-[var(--gold)]" : "text-[var(--muted)]"}`}
                 onClick={() => setMode("USD")}
                 data-testid="currency-usd-btn"
               >

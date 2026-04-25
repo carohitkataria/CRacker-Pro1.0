@@ -1,5 +1,5 @@
 // Currency formatting utilities for ₹ Crore (Indian) and $ Million (US)
-export function formatCurrency(amount, mode = "INR") {
+export function formatCurrency(amount, mode = "INR", inrPerUsd = 83) {
   const n = Number(amount || 0);
   if (mode === "INR") {
     if (Math.abs(n) >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
@@ -7,8 +7,9 @@ export function formatCurrency(amount, mode = "INR") {
     if (Math.abs(n) >= 1e3) return `₹${(n / 1e3).toFixed(1)} K`;
     return `₹${n.toFixed(0)}`;
   }
-  // USD - assume conversion rate 83 INR/USD for display purposes
-  const usd = n / 83;
+  // USD using admin-set INR→USD conversion rate
+  const rate = inrPerUsd && inrPerUsd > 0 ? inrPerUsd : 83;
+  const usd = n / rate;
   if (Math.abs(usd) >= 1e9) return `$${(usd / 1e9).toFixed(2)} B`;
   if (Math.abs(usd) >= 1e6) return `$${(usd / 1e6).toFixed(2)} M`;
   if (Math.abs(usd) >= 1e3) return `$${(usd / 1e3).toFixed(1)} K`;
