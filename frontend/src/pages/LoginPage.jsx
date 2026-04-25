@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
-import { Wallet, Lock, EnvelopeSimple } from "@phosphor-icons/react";
+import { AirplaneTilt, Lock, EnvelopeSimple } from "@phosphor-icons/react";
+import AirplaneButton from "@/components/AirplaneButton";
 
 export default function LoginPage() {
   const { login, error, user } = useAuth();
@@ -14,55 +15,74 @@ export default function LoginPage() {
     if (user && user.id) navigate("/dashboard", { replace: true });
   }, [user, navigate]);
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
+  const doLogin = async () => {
     setBusy(true);
     const ok = await login(email, password);
     setBusy(false);
     if (ok) navigate("/dashboard", { replace: true });
   };
 
+  const onSubmit = (e) => {
+    e.preventDefault();
+    doLogin();
+  };
+
   return (
     <div className="min-h-screen flex" data-testid="login-page">
-      {/* Left: hero */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-[#111110]">
+      {/* Left: hero — airport / aviation imagery */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-[#0A1628]">
         <img
-          src="https://images.pexels.com/photos/3137084/pexels-photo-3137084.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1200"
-          alt="Modern architecture"
-          className="absolute inset-0 w-full h-full object-cover opacity-60"
+          src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=1400&q=70"
+          alt="Aircraft flying over the runway at sunset"
+          className="absolute inset-0 w-full h-full object-cover opacity-55"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/30 to-black/70" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0A1628]/80 via-[#0A1628]/40 to-[#0A1628]/85" />
+        {/* India tricolor stripe on the very top of hero */}
+        <div className="absolute top-0 left-0 right-0 h-[3px] flex z-20">
+          <div className="flex-1 bg-[#FF9933]" />
+          <div className="flex-1 bg-white" />
+          <div className="flex-1 bg-[#138808]" />
+        </div>
+        <div className="cloud-trail" />
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#A67C00] flex items-center justify-center">
-              <Wallet weight="bold" size={22} className="text-black" />
+            <div className="w-10 h-10 bg-[#FFC000] flex items-center justify-center rounded-sm">
+              <AirplaneTilt weight="fill" size={22} className="text-[#0A1628]" />
             </div>
             <div>
               <div className="font-display text-xl font-bold tracking-tight">CRacker Pro</div>
-              <div className="text-[10px] tracking-overline text-[#D4AF37]">Business Finance Platform</div>
+              <div className="text-[10px] tracking-overline text-[#FFD24A]">Business Finance · Aviation</div>
             </div>
           </div>
           <div>
-            <div className="text-[10px] tracking-overline text-[#D4AF37] mb-3">Project Commercial Lifecycle</div>
+            <div className="text-[10px] tracking-overline text-[#FFD24A] mb-3">Project Commercial Lifecycle</div>
             <h2 className="font-display text-4xl xl:text-5xl font-bold leading-tight tracking-tight">
               From Pipeline to Closure.
               <br />
-              <span className="text-[#D4AF37]">Engineered for finance.</span>
+              <span className="text-[#FFD24A]">Engineered for airports.</span>
             </h2>
             <p className="mt-6 text-white/70 max-w-md text-sm leading-relaxed">
               Replace fragile Excels with audit-tracked workflows, configurable approvals, and a real-time
-              dashboard built for CFOs, controllers, and project owners.
+              dashboard built for CFOs, controllers, and airport finance teams.
             </p>
           </div>
-          <div className="text-[10px] tracking-overline text-white/40">© CRacker Pro · Confidential · Authorised access only</div>
+          <div className="text-[10px] tracking-overline text-white/40 flex items-center gap-2">
+            <span>© CRacker Pro · Confidential · Authorised access only</span>
+          </div>
         </div>
       </div>
 
-      {/* Right: form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-[#FAFAF8]">
-        <form onSubmit={onSubmit} className="w-full max-w-sm" data-testid="login-form">
-          <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-3">Sign in to your workspace</div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-[#111110] mb-1">Welcome back</h1>
+      {/* Right: form — with subtle aviation watermark */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-[#FAFAF8] aviation-watermark relative">
+        <form onSubmit={onSubmit} className="w-full max-w-sm relative z-10" data-testid="login-form">
+          <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-3 flex items-center gap-2">
+            <span className="inline-block w-3 h-[2px] bg-[#FF9933]" />
+            <span className="inline-block w-3 h-[2px] bg-white border border-[#D8D6CC]" />
+            <span className="inline-block w-3 h-[2px] bg-[#138808]" />
+            Sign in to your workspace
+          </div>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-[#111110] mb-1">Welcome aboard</h1>
           <p className="text-sm text-[#5E5E5A] mb-8">Use your CRacker Pro credentials. Passwords are admin-managed.</p>
 
           <label className="block text-[11px] tracking-overline text-[#5E5E5A] mb-1.5">Email</label>
@@ -99,9 +119,14 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button type="submit" disabled={busy} className="btn-primary w-full mt-6" data-testid="login-submit">
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
+          <AirplaneButton
+            type="submit"
+            disabled={busy}
+            testid="login-submit"
+            className="w-full mt-6 justify-center"
+          >
+            {busy ? "Signing in…" : "Sign in & take off"}
+          </AirplaneButton>
 
           <div className="mt-6 text-[11px] text-[#5E5E5A] border-t border-[#E5E5E0] pt-4">
             Forgot your password? Contact your CRacker Pro administrator. <span className="text-[#A67C00]">No OTP-based reset.</span>

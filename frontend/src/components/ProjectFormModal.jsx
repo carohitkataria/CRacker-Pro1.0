@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { X, Plus, Trash, UserPlus, FilePdf, FileXls, MagicWand, Warning, CheckCircle } from "@phosphor-icons/react";
+import AirplaneButton from "./AirplaneButton";
 
 const empty = {
   project_name: "", wbs_element: "", customer_po_number: "", po_date: "",
@@ -387,9 +388,13 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={busy} data-testid="form-submit">
+            <AirplaneButton
+              type="submit"
+              disabled={busy}
+              testid="form-submit"
+            >
               {busy ? "Saving…" : "Save Project"}
-            </button>
+            </AirplaneButton>
           </div>
         </form>
 

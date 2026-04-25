@@ -1074,11 +1074,14 @@ async def project_sap_upload(
     coll = db.revenue_lines if kind == "revenue" else db.cost_lines
     imported = 0
     skipped = 0
+    batch_id = gen_id()
     for r in rows:
         try:
             r["id"] = gen_id()
             r["project_id"] = pid
             r["created_at"] = now_iso()
+            r["import_batch_id"] = batch_id
+            r["import_source"] = "sap_excel"
             await coll.insert_one(r)
             imported += 1
         except Exception:
@@ -1089,11 +1092,66 @@ async def project_sap_upload(
         "total_rows": len(rows), "success_rows": imported, "failed_rows": skipped,
         "failures": [],
         "uploaded_by": user["email"], "uploaded_at": now_iso(),
+        "batch_id": batch_id, "project_id": pid, "kind": kind,
     }
     await db.upload_logs.insert_one(log)
     await write_audit(db, entity_type="project", entity_id=pid, action=f"sap_{kind}_import", user=user,
-                      field_changes={"imported": imported, "skipped": skipped, "wbs": wbs})
-    return {"matched": len(rows), "imported": imported, "skipped": skipped, "wbs": wbs, "kind": kind}
+                      field_changes={"imported": imported, "skipped": skipped, "wbs": wbs, "batch_id": batch_id})
+    return {"matched": len(rows), "imported": imported, "skipped": skipped, "wbs": wbs, "kind": kind, "batch_id": batch_id}
+
+
+@api.get("/projects/{pid}/sap-last-import")
+async def project_sap_last_import(pid: str, kind: str = Query(..., regex="^(revenue|cost)$"), _: dict = Depends(get_current_user)):
+    """Most recent SAP import batch for this project+kind (used to show the
+    'Undo last import' chip)."""
+    log = await db.upload_logs.find_one(
+        {"project_id": pid, "kind": kind, "entity_type": f"sap_{kind}", "undone_at": {"$in": [None, ""]}},
+        {"_id": 0},
+        sort=[("uploaded_at", -1)],
+    ) or await db.upload_logs.find_one(
+        {"project_id": pid, "kind": kind, "entity_type": f"sap_{kind}", "undone_at": {"$exists": False}},
+        {"_id": 0},
+        sort=[("uploaded_at", -1)],
+    )
+    if not log or not log.get("batch_id"):
+        return {"has_batch": False}
+    coll = db.revenue_lines if kind == "revenue" else db.cost_lines
+    count = await coll.count_documents({"project_id": pid, "import_batch_id": log["batch_id"]})
+    if count == 0:
+        return {"has_batch": False}
+    return {
+        "has_batch": True,
+        "batch_id": log["batch_id"],
+        "rows": count,
+        "uploaded_at": log["uploaded_at"],
+        "uploaded_by": log["uploaded_by"],
+        "file_name": log["file_name"],
+    }
+
+
+@api.post("/projects/{pid}/sap-undo-last")
+async def project_sap_undo_last(pid: str, kind: str = Query(..., regex="^(revenue|cost)$"), user: dict = Depends(get_current_user)):
+    """Reverse the most recent SAP import batch for this project+kind."""
+    project = await db.projects.find_one({"id": pid}, {"_id": 0})
+    if not project:
+        raise HTTPException(404, "Project not found")
+    log = await db.upload_logs.find_one(
+        {"project_id": pid, "kind": kind, "entity_type": f"sap_{kind}", "undone_at": {"$exists": False}},
+        {"_id": 0},
+        sort=[("uploaded_at", -1)],
+    )
+    if not log or not log.get("batch_id"):
+        raise HTTPException(404, "No SAP import to undo")
+    coll = db.revenue_lines if kind == "revenue" else db.cost_lines
+    res = await coll.delete_many({"project_id": pid, "import_batch_id": log["batch_id"]})
+    # mark log so we don't undo it twice
+    await db.upload_logs.update_one(
+        {"id": log["id"]},
+        {"$set": {"undone_at": now_iso(), "undone_by": user["email"]}},
+    )
+    await write_audit(db, entity_type="project", entity_id=pid, action=f"sap_{kind}_undo", user=user,
+                      field_changes={"deleted": res.deleted_count, "batch_id": log["batch_id"]})
+    return {"deleted": res.deleted_count, "batch_id": log["batch_id"], "kind": kind}
 
 
 # ============================================================

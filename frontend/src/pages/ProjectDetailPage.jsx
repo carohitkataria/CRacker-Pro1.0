@@ -6,8 +6,9 @@ import StageTracker, { STAGES } from "@/components/StageTracker";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useCurrency } from "@/lib/currency";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { ArrowLeft, ArrowRight, Plus, Trash, PencilSimple, X, UploadSimple, FileXls } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Plus, Trash, PencilSimple, X, UploadSimple, FileXls, ArrowCounterClockwise, AirplaneTakeoff } from "@phosphor-icons/react";
 import ProjectFormModal from "@/components/ProjectFormModal";
+import AirplaneButton from "@/components/AirplaneButton";
 import { useAuth } from "@/lib/auth";
 
 const TABS = ["Overview", "Revenue", "Cost", "Milestones", "Documents", "Queries", "Audit"];
@@ -80,6 +81,7 @@ export default function ProjectDetailPage() {
         title={project.project_name}
         subtitle={`${project.wbs_element || ""}  ·  ${project.customer_name || ""}`}
         breadcrumb={<><button onClick={() => navigate("/projects")} className="hover:text-[var(--gold)] inline-flex items-center gap-1"><ArrowLeft size={11} /> ALL PROJECTS</button> · {project.current_stage.toUpperCase()}</>}
+        watermark
         actions={
           <div className="flex items-center gap-2">
             {prevStage && (
@@ -88,9 +90,14 @@ export default function ProjectDetailPage() {
               </button>
             )}
             {nextStage && (
-              <button className="btn-primary text-xs flex items-center gap-1" onClick={() => advance(nextStage)} disabled={busy} data-testid="advance-stage-btn">
-                Advance to {nextStage} <ArrowRight size={12} weight="bold" />
-              </button>
+              <AirplaneButton
+                className="text-xs"
+                onClick={() => advance(nextStage)}
+                disabled={busy}
+                testid="advance-stage-btn"
+              >
+                Advance to {nextStage}
+              </AirplaneButton>
             )}
             <button className="btn-secondary text-xs flex items-center gap-1" onClick={() => setShowEdit(true)} data-testid="edit-project-btn">
               <PencilSimple size={12} /> Edit
@@ -287,6 +294,16 @@ function SapBulkUpload({ kind, projectId, project, reload }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [lastBatch, setLastBatch] = useState(null);
+
+  const loadLast = React.useCallback(async () => {
+    try {
+      const { data } = await api.get(`/projects/${projectId}/sap-last-import?kind=${kind}`);
+      setLastBatch(data?.has_batch ? data : null);
+    } catch (_) { setLastBatch(null); }
+  }, [projectId, kind]);
+
+  React.useEffect(() => { loadLast(); }, [loadLast]);
 
   const onPick = async (file) => {
     if (!file) return;
@@ -299,12 +316,27 @@ function SapBulkUpload({ kind, projectId, project, reload }) {
       });
       setResult(data);
       reload();
+      loadLast();
     } catch (e) {
       setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
     }
+  };
+
+  const onUndo = async () => {
+    if (!lastBatch) return;
+    if (!window.confirm(`Reverse the last SAP import? This will delete ${lastBatch.rows} ${kind} line(s) imported on ${new Date(lastBatch.uploaded_at).toLocaleString()} from "${lastBatch.file_name}".`)) return;
+    setBusy(true); setError("");
+    try {
+      const { data } = await api.post(`/projects/${projectId}/sap-undo-last?kind=${kind}`);
+      setResult({ undone: true, ...data });
+      reload();
+      loadLast();
+    } catch (e) {
+      setError(formatApiErrorDetail(e.response?.data?.detail) || e.message);
+    } finally { setBusy(false); }
   };
 
   const downloadTemplate = async () => {
@@ -315,14 +347,25 @@ function SapBulkUpload({ kind, projectId, project, reload }) {
   };
 
   return (
-    <div className="flex items-center gap-2" data-testid={`sap-bulk-${kind}`}>
+    <div className="flex items-center gap-2 flex-wrap" data-testid={`sap-bulk-${kind}`}>
       <input ref={inputRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => onPick(e.target.files?.[0])} data-testid={`sap-bulk-input-${kind}`} />
-      <button type="button" className="btn-ghost text-[11px] underline" onClick={downloadTemplate} title="Download the unified SAP template">
+      <button type="button" className="btn-ghost text-[11px] underline decoration-dotted" onClick={downloadTemplate} title="Download the unified SAP template">
         SAP template
       </button>
       <button type="button" className="btn-secondary text-xs flex items-center gap-1" onClick={() => inputRef.current?.click()} disabled={busy} data-testid={`sap-bulk-btn-${kind}`}>
         <FileXls size={12} weight="bold" /> {busy ? "Importing…" : "Import SAP Excel"}
       </button>
+      {lastBatch && !busy && (
+        <button
+          type="button"
+          className="btn-secondary text-xs flex items-center gap-1 !text-[var(--warning)] !border-[color-mix(in_srgb,var(--warning)_40%,transparent)] hover:!bg-[color-mix(in_srgb,var(--warning)_12%,transparent)]"
+          onClick={onUndo}
+          title={`Undo last import · ${lastBatch.rows} rows · ${new Date(lastBatch.uploaded_at).toLocaleString()}`}
+          data-testid={`sap-undo-${kind}`}
+        >
+          <ArrowCounterClockwise size={12} weight="bold" /> Undo last import ({lastBatch.rows})
+        </button>
+      )}
       {(result || error) && (
         <div
           className={`text-[11px] px-2 py-1 border ${error ? "text-[var(--danger)] border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]" : "text-[var(--success)] border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)]"}`}
@@ -330,7 +373,9 @@ function SapBulkUpload({ kind, projectId, project, reload }) {
         >
           {error
             ? error
-            : `Imported ${result.imported} / ${result.matched} rows · ${result.skipped} skipped (WBS ${project?.wbs_element || "—"})`}
+            : result.undone
+              ? `Reversed: ${result.deleted} ${kind} line(s) removed`
+              : `Imported ${result.imported} / ${result.matched} rows · ${result.skipped} skipped (WBS ${project?.wbs_element || "—"})`}
           <button className="ml-2 opacity-60" onClick={() => { setResult(null); setError(""); }}>×</button>
         </div>
       )}

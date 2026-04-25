@@ -279,3 +279,157 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .nav-link.active { color: var(--gold-soft); background: color-mix(in srgb, var(--gold) 12%, transparent); border-left-color: var(--gold); }
 
 [data-debug-wrapper="true"] { display: contents !important; }
+
+/* ===========================================================
+   AIRLINE / AVIATION THEME — animated proceed buttons,
+   airport watermarks, India-tricolor accent stripe.
+   =========================================================== */
+
+/* Tricolor accent — saffron / white / green slim band.
+   Used on page headers + login card top border. */
+.airline-stripe {
+  position: relative;
+}
+.airline-stripe::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(
+    to right,
+    #FF9933 0%, #FF9933 33.33%,
+    #FFFFFF 33.33%, #FFFFFF 66.66%,
+    #138808 66.66%, #138808 100%
+  );
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+/* Aviation watermark — subtle airplane silhouettes etched into background.
+   Use on login page, project detail header, and any "feature" surface. */
+.aviation-watermark {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.aviation-watermark::before,
+.aviation-watermark::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  background-repeat: no-repeat;
+  background-size: contain;
+  opacity: 0.06;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.05));
+}
+/* Big airplane: top-right, banking right */
+.aviation-watermark::before {
+  top: -40px; right: -60px;
+  width: 480px; height: 480px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><path fill='%23111110' d='M214.4 88.8c-3.4-3.4-9-3.4-12.4 0l-32.6 32.6-71.5-12.6L84 95.4c-2.7-2.7-7-2.7-9.7 0l-7.5 7.5c-2.7 2.7-2.7 7 0 9.7l21.7 21.6L70.4 152l-22.8-4-7.4 7.4c-2.7 2.7-2.7 7 0 9.7l13.8 13.8c1.8 1.8 4.4 2.4 6.8 1.6l31.2-9.9 17 17c2.7 2.7 7 2.7 9.7 0l7.5-7.5c2.7-2.7 2.7-7 0-9.7l-13.4-13.5 14.7-14.7L201.7 175c2.7 2.7 7 2.7 9.7 0l7.5-7.5c2.7-2.7 2.7-7 0-9.7L196 130.6 214.4 101c3.4-3.4 3.4-9 0-12.2z'/></svg>");
+  transform: rotate(20deg);
+}
+/* Small plane: bottom-left */
+.aviation-watermark::after {
+  bottom: -30px; left: -40px;
+  width: 240px; height: 240px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'><path fill='%23A67C00' d='M214.4 88.8c-3.4-3.4-9-3.4-12.4 0l-32.6 32.6-71.5-12.6L84 95.4c-2.7-2.7-7-2.7-9.7 0l-7.5 7.5c-2.7 2.7-2.7 7 0 9.7l21.7 21.6L70.4 152l-22.8-4-7.4 7.4c-2.7 2.7-2.7 7 0 9.7l13.8 13.8c1.8 1.8 4.4 2.4 6.8 1.6l31.2-9.9 17 17c2.7 2.7 7 2.7 9.7 0l7.5-7.5c2.7-2.7 2.7-7 0-9.7l-13.4-13.5 14.7-14.7L201.7 175c2.7 2.7 7 2.7 9.7 0l7.5-7.5c2.7-2.7 2.7-7 0-9.7L196 130.6 214.4 101c3.4-3.4 3.4-9 0-12.2z'/></svg>");
+  transform: rotate(-12deg);
+  opacity: 0.05;
+}
+.aviation-watermark > * { position: relative; z-index: 1; }
+
+/* Boarding-pass dashed band — used on the project header to evoke a
+   ticket / boarding-pass feel. */
+.boarding-pass-band {
+  position: relative;
+  background-image:
+    radial-gradient(circle at 1px 50%, var(--border) 1px, transparent 1px);
+  background-size: 8px 100%;
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+  height: 2px;
+}
+
+/* Subtle airport runway dotted line on the page-header bottom */
+.runway-line {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--gold) 0, var(--gold) 12px, transparent 12px, transparent 24px
+  );
+  height: 2px;
+  opacity: 0.5;
+}
+
+/* Cloud-trail decoration for hero areas */
+@keyframes cloud-drift {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-40px); }
+}
+.cloud-trail {
+  position: absolute;
+  inset: auto 0 12% 0;
+  height: 80px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 80'><path fill='%23111110' opacity='0.04' d='M0 60c40-20 80-20 120 0s80 20 120 0 80-20 120 0 80 20 120 0 80-20 120 0v20H0z'/></svg>");
+  background-size: 600px 80px;
+  background-repeat: repeat-x;
+  animation: cloud-drift 14s linear infinite;
+  pointer-events: none;
+}
+
+/* ---------- Airplane proceed button ----------
+   Use class `btn-airplane` instead of `btn-primary`. The button must
+   contain a child element with class `plane-icon` (the SVG/icon) for
+   the take-off animation to play on click. */
+.btn-airplane {
+  position: relative;
+  background: var(--text); color: var(--bg);
+  padding: 0.625rem 1.1rem 0.625rem 1.25rem;
+  border: 1px solid var(--text);
+  font-weight: 500; letter-spacing: 0.01em;
+  transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.12s;
+  border-radius: 2px;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  overflow: hidden;
+}
+.btn-airplane:hover { background: var(--gold); border-color: var(--gold); color: var(--surface); }
+.btn-airplane:hover .plane-icon { transform: translateX(3px) rotate(-8deg); }
+.btn-airplane:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-airplane .plane-icon {
+  display: inline-flex;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Take-off animation triggered by .is-taking-off class */
+@keyframes plane-takeoff {
+  0%   { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+  35%  { transform: translate(40px, -8px) rotate(-12deg) scale(1.05); opacity: 1; }
+  60%  { transform: translate(120px, -20px) rotate(-18deg) scale(0.95); opacity: 0.9; }
+  100% { transform: translate(260px, -42px) rotate(-22deg) scale(0.7); opacity: 0; }
+}
+.btn-airplane.is-taking-off .plane-icon {
+  animation: plane-takeoff 0.65s cubic-bezier(0.4, 0.0, 0.6, 1) forwards;
+}
+@keyframes contrail-fade {
+  0% { transform: scaleX(0); opacity: 0.85; }
+  60% { transform: scaleX(1); opacity: 0.65; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+.btn-airplane.is-taking-off::after {
+  content: "";
+  position: absolute;
+  left: 30px; top: 50%;
+  width: 70%; height: 1.5px;
+  background: linear-gradient(to right, transparent, currentColor 40%, transparent);
+  transform-origin: left center;
+  animation: contrail-fade 0.65s linear forwards;
+  pointer-events: none;
+}
+/* Reduced motion: skip the animation but still let the click resolve */
+@media (prefers-reduced-motion: reduce) {
+  .btn-airplane.is-taking-off .plane-icon { animation: none; }
+  .btn-airplane.is-taking-off::after { display: none; }
+}
+
+/* Idle hover-lift for primary CTAs */
+.btn-airplane:not(:disabled):active { transform: translateY(1px); }
