@@ -935,6 +935,266 @@ async def upload_logs(_: dict = Depends(get_current_user)):
 
 
 # ============================================================
+# FINANCE QUERIES (threaded discussion)
+# ============================================================
+from pydantic import BaseModel as _BM
+
+class QueryCreate(_BM):
+    subject: str
+    description: str
+
+class ReplyCreate(_BM):
+    content: str
+
+
+@api.get("/projects/{pid}/queries")
+async def list_queries(pid: str, _: dict = Depends(get_current_user)):
+    rows = await db.finance_queries.find({"project_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return rows
+
+
+@api.post("/projects/{pid}/queries")
+async def create_query(pid: str, payload: QueryCreate, user: dict = Depends(get_current_user)):
+    project = await db.projects.find_one({"id": pid}, {"_id": 0})
+    if not project:
+        raise HTTPException(404, "Project not found")
+    doc = {
+        "id": gen_id(),
+        "project_id": pid,
+        "project_name": project.get("project_name"),
+        "subject": payload.subject,
+        "description": payload.description,
+        "status": "Open",
+        "raised_by": user["email"],
+        "raised_by_name": user.get("name"),
+        "created_at": now_iso(),
+        "replies": [],
+        "attachments": [],
+    }
+    await db.finance_queries.insert_one(doc)
+    await write_audit(db, entity_type="finance_query", entity_id=doc["id"], action="create",
+                      user=user, field_changes={"project_id": pid, "subject": payload.subject})
+    doc.pop("_id", None)
+    return doc
+
+
+@api.post("/queries/{qid}/replies")
+async def reply_query(qid: str, payload: ReplyCreate, user: dict = Depends(get_current_user)):
+    q = await db.finance_queries.find_one({"id": qid})
+    if not q:
+        raise HTTPException(404, "Not found")
+    if q.get("status") == "Closed":
+        raise HTTPException(400, "Query is closed")
+    reply = {
+        "id": gen_id(),
+        "content": payload.content,
+        "replied_by": user["email"],
+        "replied_by_name": user.get("name"),
+        "replied_at": now_iso(),
+    }
+    await db.finance_queries.update_one({"id": qid}, {"$push": {"replies": reply}})
+    await write_audit(db, entity_type="finance_query", entity_id=qid, action="reply",
+                      user=user, field_changes={"reply_id": reply["id"]})
+    return reply
+
+
+@api.patch("/queries/{qid}/status")
+async def set_query_status(qid: str, status: str = Query(..., regex="^(Open|Closed)$"),
+                            user: dict = Depends(get_current_user)):
+    q = await db.finance_queries.find_one({"id": qid})
+    if not q:
+        raise HTTPException(404, "Not found")
+    await db.finance_queries.update_one({"id": qid}, {"$set": {"status": status, "closed_at": now_iso() if status == "Closed" else None}})
+    await write_audit(db, entity_type="finance_query", entity_id=qid, action="status_change",
+                      user=user, field_changes={"status": status})
+    return {"ok": True, "status": status}
+
+
+# ============================================================
+# CUSTOMER PROFILE
+# ============================================================
+@api.get("/customers/{cid}/profile")
+async def customer_profile(cid: str, _: dict = Depends(get_current_user)):
+    cust = await db.customers.find_one({"id": cid}, {"_id": 0})
+    if not cust:
+        raise HTTPException(404, "Customer not found")
+    projects = await db.projects.find({"customer_id": cid}, {"_id": 0}).to_list(500)
+    pids = [p["id"] for p in projects]
+    revenue_lines = await db.revenue_lines.find({"project_id": {"$in": pids}}, {"_id": 0}).to_list(5000) if pids else []
+    cost_lines = await db.cost_lines.find({"project_id": {"$in": pids}}, {"_id": 0}).to_list(5000) if pids else []
+
+    total_po = sum((p.get("po_value") or 0) for p in projects)
+    total_revenue = sum((p.get("revenue_total") or 0) for p in projects)
+    total_cost = sum((p.get("cost_total") or 0) for p in projects)
+    total_margin = total_revenue - total_cost
+    margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0
+
+    recognized = sum((r.get("amount") or 0) for r in revenue_lines)
+    billed = sum((r.get("amount") or 0) for r in revenue_lines if r.get("is_billed"))
+    unbilled = recognized - billed
+
+    # Ageing buckets based on billing_date vs today (for unbilled, use recognition_date)
+    today = datetime.now(timezone.utc).date()
+    buckets = {"0-30": 0.0, "31-60": 0.0, "61-90": 0.0, "90+": 0.0}
+    for r in revenue_lines:
+        if r.get("is_billed"):
+            continue
+        d = r.get("recognition_date")
+        if not d:
+            continue
+        try:
+            days = (today - datetime.fromisoformat(d).date()).days
+        except Exception:
+            continue
+        amt = r.get("amount") or 0
+        if days <= 30:
+            buckets["0-30"] += amt
+        elif days <= 60:
+            buckets["31-60"] += amt
+        elif days <= 90:
+            buckets["61-90"] += amt
+        else:
+            buckets["90+"] += amt
+
+    # Stage distribution
+    stage_dist: Dict[str, int] = {}
+    for p in projects:
+        s = p.get("current_stage", "Pipeline")
+        stage_dist[s] = stage_dist.get(s, 0) + 1
+
+    # Sort projects by start_date desc
+    projects.sort(key=lambda p: p.get("start_date") or "", reverse=True)
+
+    return {
+        "customer": cust,
+        "totals": {
+            "project_count": len(projects),
+            "total_po": total_po,
+            "total_revenue": total_revenue,
+            "total_cost": total_cost,
+            "total_margin": total_margin,
+            "margin_pct": margin_pct,
+        },
+        "billing": {"recognized": recognized, "billed": billed, "unbilled": unbilled},
+        "ageing_buckets": [{"bucket": k, "amount": v} for k, v in buckets.items()],
+        "stage_distribution": [{"stage": k, "count": v} for k, v in stage_dist.items()],
+        "projects": projects,
+        "revenue_lines": revenue_lines,
+        "cost_lines": cost_lines,
+    }
+
+
+# ============================================================
+# DOCUMENT ATTACHMENTS (per project, with optional PDF parsing)
+# ============================================================
+UPLOAD_DIR = ROOT_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@api.get("/projects/{pid}/documents")
+async def list_documents(pid: str, _: dict = Depends(get_current_user)):
+    docs = await db.documents.find({"project_id": pid}, {"_id": 0, "storage_path": 0}).sort("uploaded_at", -1).to_list(500)
+    return docs
+
+
+@api.post("/projects/{pid}/documents")
+async def upload_document(
+    pid: str,
+    file: UploadFile = File(...),
+    parse: bool = Query(False),
+    apply_extracted: bool = Query(False),
+    user: dict = Depends(get_current_user),
+):
+    project = await db.projects.find_one({"id": pid}, {"_id": 0})
+    if not project:
+        raise HTTPException(404, "Project not found")
+
+    contents = await file.read()
+    doc_id = gen_id()
+    safe_name = (file.filename or "file").replace("/", "_")
+    path = UPLOAD_DIR / f"{doc_id}__{safe_name}"
+    with open(path, "wb") as f:
+        f.write(contents)
+
+    parsed: Optional[Dict[str, Any]] = None
+    is_pdf = (file.content_type == "application/pdf") or safe_name.lower().endswith(".pdf")
+    if parse and is_pdf:
+        try:
+            from pdf_parser import parse_customer_po
+            parsed = parse_customer_po(contents)
+        except Exception as e:
+            parsed = {"error": str(e), "warnings": [str(e)]}
+
+    doc = {
+        "id": doc_id,
+        "project_id": pid,
+        "file_name": safe_name,
+        "size": len(contents),
+        "content_type": file.content_type or "application/octet-stream",
+        "storage_path": str(path),
+        "parsed": parsed,
+        "uploaded_by": user["email"],
+        "uploaded_at": now_iso(),
+    }
+    await db.documents.insert_one(doc)
+    await write_audit(db, entity_type="document", entity_id=doc_id, action="create",
+                      user=user, field_changes={"project_id": pid, "file_name": safe_name, "parsed": bool(parsed)})
+
+    # Optionally apply extracted fields to project
+    applied = {}
+    if apply_extracted and parsed:
+        upd = {}
+        if parsed.get("customer_po_number") and not project.get("customer_po_number"):
+            upd["customer_po_number"] = parsed["customer_po_number"]
+        if parsed.get("po_value") and not project.get("po_value"):
+            upd["po_value"] = parsed["po_value"]
+        if parsed.get("currency") and not project.get("currency"):
+            upd["currency"] = parsed["currency"]
+        if parsed.get("milestones"):
+            upd["milestones"] = parsed["milestones"]
+            upd["billing_type"] = "Milestone"
+        if upd:
+            upd["updated_at"] = now_iso()
+            await db.projects.update_one({"id": pid}, {"$set": upd})
+            applied = upd
+            await write_audit(db, entity_type="project", entity_id=pid, action="auto_extracted",
+                              user=user, field_changes=upd, reason=f"From document {safe_name}")
+
+    doc.pop("_id", None)
+    doc.pop("storage_path", None)
+    return {"document": doc, "applied": applied}
+
+
+@api.get("/documents/{did}/download")
+async def download_document(did: str, _: dict = Depends(get_current_user)):
+    d = await db.documents.find_one({"id": did})
+    if not d:
+        raise HTTPException(404, "Not found")
+    p = Path(d["storage_path"])
+    if not p.exists():
+        raise HTTPException(404, "File missing")
+    with open(p, "rb") as f:
+        data = f.read()
+    return StreamingResponse(io.BytesIO(data),
+                             media_type=d.get("content_type") or "application/octet-stream",
+                             headers={"Content-Disposition": f'attachment; filename="{d["file_name"]}"'})
+
+
+@api.delete("/documents/{did}")
+async def delete_document(did: str, user: dict = Depends(get_current_user)):
+    d = await db.documents.find_one({"id": did})
+    if not d:
+        raise HTTPException(404, "Not found")
+    try:
+        Path(d["storage_path"]).unlink(missing_ok=True)
+    except Exception:
+        pass
+    await db.documents.delete_one({"id": did})
+    await write_audit(db, entity_type="document", entity_id=did, action="delete", user=user)
+    return {"ok": True}
+
+
+# ============================================================
 # Health
 # ============================================================
 @api.get("/")

@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import { Plus, Trash, X, DownloadSimple } from "@phosphor-icons/react";
 import { formatCurrency } from "@/lib/format";
 import { useCurrency } from "@/lib/currency";
+import { useNavigate } from "react-router-dom";
 
 const ENTITIES = {
   customers: {
@@ -73,6 +74,7 @@ const ENTITIES = {
 export default function MasterPage({ entityKey }) {
   const meta = ENTITIES[entityKey];
   const { mode } = useCurrency();
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -122,19 +124,27 @@ export default function MasterPage({ entityKey }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} data-testid={`${entityKey}-row-${r.id}`}>
-                  {meta.columns.map((c) => (
-                    <td key={c.key} className={c.type === "currency" ? "num" : ""}>
-                      {c.type === "currency" ? formatCurrency(r[c.key], mode) : r[c.key] || "—"}
+              {rows.map((r) => {
+                const isClickable = entityKey === "customers";
+                return (
+                  <tr
+                    key={r.id}
+                    data-testid={`${entityKey}-row-${r.id}`}
+                    className={isClickable ? "cursor-pointer" : ""}
+                    onClick={() => isClickable && navigate(`/customers/${r.id}`)}
+                  >
+                    {meta.columns.map((c) => (
+                      <td key={c.key} className={c.type === "currency" ? "num" : ""}>
+                        {c.type === "currency" ? formatCurrency(r[c.key], mode) : r[c.key] || "—"}
+                      </td>
+                    ))}
+                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <button className="btn-ghost mr-1 text-xs" onClick={() => { setEditing(r); setShow(true); }}>Edit</button>
+                      <button className="btn-ghost" onClick={() => onDelete(r.id)} data-testid={`${entityKey}-delete-${r.id}`}><Trash size={14} /></button>
                     </td>
-                  ))}
-                  <td className="text-right">
-                    <button className="btn-ghost mr-1 text-xs" onClick={() => { setEditing(r); setShow(true); }}>Edit</button>
-                    <button className="btn-ghost" onClick={() => onDelete(r.id)} data-testid={`${entityKey}-delete-${r.id}`}><Trash size={14} /></button>
-                  </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
               {rows.length === 0 && <tr><td colSpan={meta.columns.length + 1} className="text-center py-12 text-[#5E5E5A]">No records yet</td></tr>}
             </tbody>
           </table>

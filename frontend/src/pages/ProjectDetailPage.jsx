@@ -6,10 +6,10 @@ import StageTracker, { STAGES } from "@/components/StageTracker";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useCurrency } from "@/lib/currency";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { ArrowLeft, ArrowRight, Plus, Trash, PencilSimple } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 import ProjectFormModal from "@/components/ProjectFormModal";
 
-const TABS = ["Overview", "Revenue", "Cost", "Milestones", "Audit"];
+const TABS = ["Overview", "Revenue", "Cost", "Milestones", "Documents", "Queries", "Audit"];
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -121,6 +121,8 @@ export default function ProjectDetailPage() {
         {tab === "Revenue" && <RevenueTab projectId={id} rows={revenue} reload={load} mode={mode} />}
         {tab === "Cost" && <CostTab projectId={id} rows={cost} reload={load} mode={mode} />}
         {tab === "Milestones" && <Milestones project={project} mode={mode} />}
+        {tab === "Documents" && <DocumentsTab projectId={id} reload={load} />}
+        {tab === "Queries" && <QueriesTab projectId={id} />}
         {tab === "Audit" && <AuditTab rows={audit} />}
       </div>
 
@@ -340,6 +342,295 @@ function AuditTab({ rows }) {
           {rows.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-[#5E5E5A]">No audit events</td></tr>}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ============================================================
+// DOCUMENTS TAB (PDF + any file, with optional auto-parse)
+// ============================================================
+function DocumentsTab({ projectId, reload }) {
+  const [docs, setDocs] = React.useState([]);
+  const [parse, setParse] = React.useState(true);
+  const [applyExtracted, setApplyExtracted] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [drag, setDrag] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState(null);
+  const [error, setError] = React.useState("");
+  const inputRef = React.useRef();
+
+  const load = async () => {
+    const { data } = await api.get(`/projects/${projectId}/documents`);
+    setDocs(data);
+  };
+  React.useEffect(() => { load(); /* eslint-disable-line */ }, [projectId]);
+
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true); setError(""); setLastResult(null);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const params = new URLSearchParams({ parse: parse ? "true" : "false", apply_extracted: applyExtracted ? "true" : "false" });
+      const { data } = await api.post(`/projects/${projectId}/documents?${params}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      setLastResult(data);
+      load();
+      if (Object.keys(data.applied || {}).length) reload();
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message);
+    } finally { setBusy(false); }
+  };
+
+  const download = async (d) => {
+    const r = await api.get(`/documents/${d.id}/download`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([r.data]));
+    const a = document.createElement("a"); a.href = url; a.download = d.file_name; a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const remove = async (d) => {
+    if (!window.confirm(`Delete ${d.file_name}?`)) return;
+    await api.delete(`/documents/${d.id}`); load();
+  };
+
+  return (
+    <div>
+      <h3 className="font-display text-lg font-bold mb-4">Documents</h3>
+
+      <div className="tile p-5 mb-5">
+        <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-3">Upload Customer PO / Vendor PO / Contract / Any document</div>
+        <div className="flex flex-wrap items-center gap-4 mb-3">
+          <label className="flex items-center gap-2 text-xs text-[#5E5E5A] cursor-pointer" data-testid="doc-parse-toggle">
+            <input type="checkbox" checked={parse} onChange={(e) => setParse(e.target.checked)} />
+            Auto-parse PDF (extract PO number, value, milestones)
+          </label>
+          <label className="flex items-center gap-2 text-xs text-[#5E5E5A] cursor-pointer" data-testid="doc-apply-toggle">
+            <input type="checkbox" checked={applyExtracted} onChange={(e) => setApplyExtracted(e.target.checked)} disabled={!parse} />
+            Apply extracted fields to project (only fills empty fields)
+          </label>
+        </div>
+        <div
+          className={`border-2 border-dashed p-8 text-center transition-all ${drag ? "border-[#A67C00] bg-[#fdf6e3]" : "border-[#E5E5E0]"}`}
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files?.[0]); }}
+          data-testid="doc-drop-zone"
+        >
+          <div className="text-sm text-[#5E5E5A]">Drag & drop a file here, or</div>
+          <input ref={inputRef} type="file" className="hidden" onChange={(e) => upload(e.target.files?.[0])} data-testid="doc-input" />
+          <button className="btn-primary mt-3" onClick={() => inputRef.current?.click()} disabled={busy} data-testid="doc-upload-btn">
+            {busy ? "Uploading…" : "Choose File"}
+          </button>
+        </div>
+        {error && <div className="text-xs text-[#991B1B] bg-[#fdeaea] p-2 mt-3 border border-[#f1c2c2]">{error}</div>}
+        {lastResult?.document && (
+          <div className="mt-4 border border-[#E5E5E0] p-4" data-testid="doc-last-result">
+            <div className="text-[10px] tracking-overline text-[#5E5E5A] mb-2">Last upload</div>
+            <div className="text-sm font-medium">{lastResult.document.file_name}</div>
+            {lastResult.document.parsed && (
+              <div className="mt-2 text-xs space-y-1">
+                <div className="text-[#5E5E5A] tracking-overline text-[10px]">Extracted</div>
+                <pre className="font-mono text-[11px] whitespace-pre-wrap bg-[#fafaf6] p-2 border border-[#E5E5E0]">
+{JSON.stringify({
+  customer_po_number: lastResult.document.parsed.customer_po_number,
+  po_date: lastResult.document.parsed.po_date,
+  po_value: lastResult.document.parsed.po_value,
+  currency: lastResult.document.parsed.currency,
+  milestones_found: lastResult.document.parsed.milestones?.length || 0,
+  warnings: lastResult.document.parsed.warnings,
+}, null, 2)}
+                </pre>
+                {Object.keys(lastResult.applied || {}).length > 0 && (
+                  <div className="text-[#2E6B4A]">✓ Applied {Object.keys(lastResult.applied).length} fields to project</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <table className="tbl tile">
+        <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Parsed</th><th></th></tr></thead>
+        <tbody>
+          {docs.map((d) => (
+            <tr key={d.id} data-testid={`doc-row-${d.id}`}>
+              <td className="font-medium">{d.file_name}</td>
+              <td className="text-xs text-[#5E5E5A]">{d.content_type}</td>
+              <td className="num text-xs">{(d.size / 1024).toFixed(1)} KB</td>
+              <td className="text-xs">{formatDateTime(d.uploaded_at)}<div className="text-[#5E5E5A]">{d.uploaded_by}</div></td>
+              <td>{d.parsed ? <StatusBadge status="Approved" /> : <StatusBadge status="Not Required" />}</td>
+              <td className="text-right">
+                <button className="btn-ghost text-xs" onClick={() => download(d)} data-testid={`doc-download-${d.id}`}>Download</button>
+                <button className="btn-ghost ml-1" onClick={() => remove(d)} data-testid={`doc-delete-${d.id}`}>
+                  <Trash size={14} />
+                </button>
+              </td>
+            </tr>
+          ))}
+          {docs.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-[#5E5E5A]">No documents attached yet</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================
+// QUERIES TAB (Finance Query threaded discussion)
+// ============================================================
+function QueriesTab({ projectId }) {
+  const [queries, setQueries] = React.useState([]);
+  const [show, setShow] = React.useState(false);
+  const [active, setActive] = React.useState(null);
+
+  const load = async () => {
+    const { data } = await api.get(`/projects/${projectId}/queries`);
+    setQueries(data);
+  };
+  React.useEffect(() => { load(); /* eslint-disable-line */ }, [projectId]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-display text-lg font-bold">Finance Queries</h3>
+        <button className="btn-primary text-xs flex items-center gap-1" onClick={() => setShow(true)} data-testid="new-query-btn">
+          <Plus size={12} /> New Query
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-5 space-y-2 max-h-[560px] overflow-y-auto" data-testid="queries-list">
+          {queries.map((q) => (
+            <div
+              key={q.id}
+              onClick={() => setActive(q)}
+              className={`tile p-4 cursor-pointer ${active?.id === q.id ? "border-[#A67C00]" : ""}`}
+              data-testid={`query-item-${q.id}`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="font-medium">{q.subject}</div>
+                <StatusBadge status={q.status === "Open" ? "Pending" : "Approved"} />
+              </div>
+              <div className="text-xs text-[#5E5E5A] mt-1 line-clamp-2">{q.description}</div>
+              <div className="text-[11px] text-[#5E5E5A] mt-2 flex items-center justify-between">
+                <span>{q.raised_by_name || q.raised_by}</span>
+                <span>{q.replies?.length || 0} {q.replies?.length === 1 ? "reply" : "replies"}</span>
+              </div>
+            </div>
+          ))}
+          {queries.length === 0 && <div className="text-sm text-[#5E5E5A] text-center py-12">No queries yet</div>}
+        </div>
+
+        <div className="lg:col-span-7">
+          {active ? <QueryThread query={active} reload={load} setActive={setActive} /> : (
+            <div className="tile p-12 text-center text-[#5E5E5A] text-sm">Select a query to see the thread</div>
+          )}
+        </div>
+      </div>
+
+      {show && <NewQueryModal projectId={projectId} onClose={() => setShow(false)} onSaved={() => { setShow(false); load(); }} />}
+    </div>
+  );
+}
+
+function QueryThread({ query, reload, setActive }) {
+  const [content, setContent] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const reply = async () => {
+    if (!content.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`/queries/${query.id}/replies`, { content });
+      setContent("");
+      reload();
+      const r = await api.get(`/projects/${query.project_id}/queries`);
+      const updated = r.data.find((q) => q.id === query.id);
+      if (updated) setActive(updated);
+    } finally { setBusy(false); }
+  };
+  const close = async () => {
+    await api.patch(`/queries/${query.id}/status?status=Closed`);
+    reload();
+    const r = await api.get(`/projects/${query.project_id}/queries`);
+    setActive(r.data.find((q) => q.id === query.id));
+  };
+  const reopen = async () => {
+    await api.patch(`/queries/${query.id}/status?status=Open`);
+    reload();
+    const r = await api.get(`/projects/${query.project_id}/queries`);
+    setActive(r.data.find((q) => q.id === query.id));
+  };
+
+  return (
+    <div className="tile p-5" data-testid="query-thread">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[10px] tracking-overline text-[#5E5E5A]">Query</div>
+          <div className="font-display text-lg font-bold">{query.subject}</div>
+        </div>
+        {query.status === "Open"
+          ? <button className="btn-secondary text-xs" onClick={close} data-testid="close-query-btn">Mark resolved</button>
+          : <button className="btn-secondary text-xs" onClick={reopen} data-testid="reopen-query-btn">Reopen</button>}
+      </div>
+
+      <div className="border-l-2 border-[#A67C00] pl-3 py-1 mb-4">
+        <div className="text-xs text-[#5E5E5A] mb-1">{query.raised_by_name || query.raised_by} · {formatDateTime(query.created_at)}</div>
+        <div className="text-sm whitespace-pre-wrap">{query.description}</div>
+      </div>
+
+      <div className="space-y-3 max-h-[300px] overflow-y-auto">
+        {(query.replies || []).map((r) => (
+          <div key={r.id} className="border border-[#E5E5E0] p-3" data-testid={`reply-${r.id}`}>
+            <div className="text-xs text-[#5E5E5A] mb-1">{r.replied_by_name || r.replied_by} · {formatDateTime(r.replied_at)}</div>
+            <div className="text-sm whitespace-pre-wrap">{r.content}</div>
+          </div>
+        ))}
+      </div>
+
+      {query.status === "Open" && (
+        <div className="mt-4 flex flex-col gap-2">
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Type your reply…"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            data-testid="reply-input"
+          />
+          <button className="btn-primary self-end text-xs" onClick={reply} disabled={busy || !content.trim()} data-testid="reply-submit">
+            {busy ? "Posting…" : "Post Reply"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewQueryModal({ projectId, onClose, onSaved }) {
+  const [subject, setSubject] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true);
+    try {
+      await api.post(`/projects/${projectId}/queries`, { subject, description });
+      onSaved();
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <form onSubmit={submit} className="bg-white border w-full max-w-lg" data-testid="query-modal">
+        <div className="p-5 border-b border-[#E5E5E0] flex justify-between items-center">
+          <h3 className="font-display text-lg font-bold">Raise a Finance Query</h3>
+          <button type="button" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <input className="input" required placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} data-testid="query-subject" />
+          <textarea className="input" required rows={6} placeholder="Describe the query in detail…" value={description} onChange={(e) => setDescription(e.target.value)} data-testid="query-description" />
+        </div>
+        <div className="p-5 border-t flex justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary" disabled={busy} data-testid="query-submit">{busy ? "Saving…" : "Raise Query"}</button>
+        </div>
+      </form>
     </div>
   );
 }

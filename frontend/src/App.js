@@ -9,6 +9,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import MasterPage from "@/pages/MasterPage";
+import CustomerProfilePage from "@/pages/CustomerProfilePage";
 import UploadsPage from "@/pages/UploadsPage";
 import ApprovalsPage from "@/pages/ApprovalsPage";
 import AuditPage from "@/pages/AuditPage";
@@ -42,6 +43,7 @@ function App() {
               <Route path="/projects" element={<Protected><ProjectsPage /></Protected>} />
               <Route path="/projects/:id" element={<Protected><ProjectDetailPage /></Protected>} />
               <Route path="/customers" element={<Protected><MasterPage entityKey="customers" /></Protected>} />
+              <Route path="/customers/:id" element={<Protected><CustomerProfilePage /></Protected>} />
               <Route path="/suppliers" element={<Protected><MasterPage entityKey="suppliers" /></Protected>} />
               <Route path="/employees" element={<Protected><MasterPage entityKey="employees" /></Protected>} />
               <Route path="/uploads" element={<Protected><UploadsPage /></Protected>} />

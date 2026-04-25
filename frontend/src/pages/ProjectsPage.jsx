@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 import { StatusBadge } from "@/components/StatusBadge";
 import { STAGES } from "@/components/StageTracker";
-import { Plus, MagnifyingGlass, FunnelSimple } from "@phosphor-icons/react";
+import { Plus, MagnifyingGlass, FunnelSimple, PencilSimple } from "@phosphor-icons/react";
 import ProjectFormModal from "@/components/ProjectFormModal";
 
 export default function ProjectsPage() {
@@ -16,6 +16,7 @@ export default function ProjectsPage() {
   const [stage, setStage] = useState("");
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [customers, setCustomers] = useState([]);
 
   const load = async () => {
@@ -91,6 +92,7 @@ export default function ProjectsPage() {
                 <th className="num">PO Value</th>
                 <th className="num">Margin %</th>
                 <th>End Date</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -110,10 +112,20 @@ export default function ProjectsPage() {
                   <td className="num">{formatCurrency(p.po_value, mode)}</td>
                   <td className={`num ${(p.margin_pct || 0) < 15 ? "text-[#991B1B]" : ""}`}>{(p.margin_pct || 0).toFixed(1)}%</td>
                   <td>{formatDate(p.end_date)}</td>
+                  <td className="text-right">
+                    <button
+                      className="btn-ghost"
+                      title="Edit project"
+                      onClick={(e) => { e.stopPropagation(); setEditing(p); }}
+                      data-testid={`project-edit-${p.id}`}
+                    >
+                      <PencilSimple size={16} weight="duotone" className="text-[#A67C00]" />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {projects.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-12 text-[#5E5E5A]">No projects yet</td></tr>
+                <tr><td colSpan={9} className="text-center py-12 text-[#5E5E5A]">No projects yet</td></tr>
               )}
             </tbody>
           </table>
@@ -125,6 +137,14 @@ export default function ProjectsPage() {
           customers={customers}
           onClose={() => setShowCreate(false)}
           onSaved={() => { setShowCreate(false); load(); }}
+        />
+      )}
+      {editing && (
+        <ProjectFormModal
+          project={editing}
+          customers={customers}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
         />
       )}
     </div>
