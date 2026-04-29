@@ -26,6 +26,7 @@ from models import (
     RevenueLineIn, RevenueLineOut, CostLineIn, CostLineOut,
     ApprovalRuleIn, ApprovalRuleOut, ApprovalActionIn, ApprovalRequestOut,
     AuditLogOut, UploadLogOut, gen_id, now_iso, STAGES,
+    PipelineIn, PipelineOut, PipelineStageIn, PipelineHandoffAction, PIPELINE_STAGES,
 )
 from services import (
     can_transition, write_audit, compute_margin, find_matching_rule, create_approval_request,
@@ -77,6 +78,7 @@ async def on_startup():
     await db.audit_logs.create_index("timestamp")
     await db.upload_logs.create_index("uploaded_at")
     await db.login_attempts.create_index("identifier")
+    await db.pipelines.create_index("id", unique=True)
 
     # Admin seed
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@crackerpro.com")
@@ -223,6 +225,68 @@ async def on_startup():
              "expense_date": (datetime.now(timezone.utc) - timedelta(days=20)).date().isoformat(),
              "category": "Subcontracting", "created_at": now_iso()},
         ])
+
+    # Seed pipeline (opportunity funnel) sample
+    if await db.pipelines.count_documents({}) == 0:
+        cust_list = await db.customers.find({}, {"_id": 0}).to_list(10)
+        pipe_seeds = [
+            {"opportunity_title": "BIAL Smart Gate Expansion Phase 2",
+             "current_stage": "Active Discussion", "expected_revenue": 85000000,
+             "bd_owner": "priya.mehta@crackerpro.com", "business_category": "GMR",
+             "priority": "High", "solution_scope": "Extend airside gate solution to 12 additional gates",
+             "expected_timeline": "Q3 FY27", "industry": "Aviation", "source": "Repeat"},
+            {"opportunity_title": "Hyderabad Airport Retail Kiosk Rollout",
+             "current_stage": "Proposal Submitted", "expected_revenue": 22000000,
+             "proposal_value": 21500000, "proposal_submitted_on": (datetime.now(timezone.utc) - timedelta(days=14)).date().isoformat(),
+             "bd_owner": "carohitkataria@gmail.com", "business_category": "Non-GMR",
+             "priority": "Medium", "industry": "Retail / F&B", "source": "RFP"},
+            {"opportunity_title": "Calicut Ops Support Renewal",
+             "current_stage": "Evaluation/Negotiation", "expected_revenue": 15000000,
+             "negotiated_value": 14200000, "estimated_margin_pct": 18.5,
+             "bd_owner": "priya.mehta@crackerpro.com", "business_category": "GMR",
+             "priority": "High", "industry": "Aviation Services", "source": "Repeat"},
+            {"opportunity_title": "Greenfield Cargo Terminal IT Stack",
+             "current_stage": "Prospecting", "expected_revenue": 180000000,
+             "bd_owner": "priya.mehta@crackerpro.com", "business_category": "Non-GMR",
+             "priority": "High", "industry": "Cargo", "source": "Cold"},
+        ]
+        now = now_iso()
+        docs = []
+        for i, s in enumerate(pipe_seeds):
+            cust = cust_list[i % len(cust_list)] if cust_list else {}
+            docs.append({
+                "id": gen_id(),
+                "opportunity_title": s["opportunity_title"],
+                "customer_name": cust.get("customer_name"),
+                "customer_id": cust.get("id"),
+                "bd_owner": s.get("bd_owner"),
+                "expected_revenue": s.get("expected_revenue", 0),
+                "currency": "INR",
+                "source": s.get("source"),
+                "industry": s.get("industry"),
+                "solution_scope": s.get("solution_scope", ""),
+                "expected_timeline": s.get("expected_timeline", ""),
+                "competitors": "",
+                "stakeholders": [],
+                "proposal_value": s.get("proposal_value", 0),
+                "proposal_submitted_on": s.get("proposal_submitted_on"),
+                "proposal_validity": None, "proposal_notes": "",
+                "negotiated_value": s.get("negotiated_value", 0),
+                "estimated_margin_pct": s.get("estimated_margin_pct", 0),
+                "expected_decision_date": None, "negotiation_notes": "",
+                "outcome": "Open", "closure_date": None, "win_loss_reason": "",
+                "business_category": s.get("business_category"),
+                "priority": s.get("priority"),
+                "remarks": "",
+                "current_stage": s["current_stage"],
+                "handoff_status": "Not Applicable",
+                "handoff_project_id": None,
+                "handoff_requested_by": None, "handoff_requested_at": None,
+                "handoff_actioned_by": None, "handoff_actioned_at": None,
+                "handoff_comment": "",
+                "created_at": now, "updated_at": now, "created_by": admin_email,
+            })
+        await db.pipelines.insert_many(docs)
 
 
 @app.on_event("shutdown")
@@ -873,9 +937,9 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
         cust_agg[cid]["po_value"] += p.get("po_value", 0) or 0
         cust_agg[cid]["revenue"] += p.get("revenue_total", 0) or 0
         cust_agg[cid]["count"] += 1
-    top_customers = sorted(cust_agg.values(), key=lambda x: -x["po_value"])[:5]
+    top_customers = sorted(cust_agg.values(), key=lambda x: -x["po_value"])[:10]
 
-    # vendor exposure (sum of cost lines by supplier_name)
+    # vendor exposure (sum of cost lines by supplier_name) — top 10
     cost_lines = await db.cost_lines.find({}, {"_id": 0}).to_list(5000)
     vendor_agg: Dict[str, float] = {}
     for c in cost_lines:
@@ -884,7 +948,7 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
     vendor_exposure = sorted(
         [{"supplier_name": k, "amount": v} for k, v in vendor_agg.items()],
         key=lambda x: -x["amount"],
-    )[:5]
+    )[:10]
 
     # monthly billing status (last 6 months)
     months: List[str] = []
@@ -1321,6 +1385,7 @@ async def list_documents(pid: str, _: dict = Depends(get_current_user)):
 async def upload_document(
     pid: str,
     file: UploadFile = File(...),
+    name: str = Query(..., min_length=1, description="Document display name (required)"),
     parse: bool = Query(False),
     apply_extracted: bool = Query(False),
     user: dict = Depends(get_current_user),
@@ -1328,6 +1393,9 @@ async def upload_document(
     project = await db.projects.find_one({"id": pid}, {"_id": 0})
     if not project:
         raise HTTPException(404, "Project not found")
+
+    if not (name or "").strip():
+        raise HTTPException(400, "Document name is required")
 
     contents = await file.read()
     doc_id = gen_id()
@@ -1348,6 +1416,7 @@ async def upload_document(
     doc = {
         "id": doc_id,
         "project_id": pid,
+        "name": name.strip(),
         "file_name": safe_name,
         "size": len(contents),
         "content_type": file.content_type or "application/octet-stream",
@@ -1411,6 +1480,246 @@ async def delete_document(did: str, user: dict = Depends(get_current_user)):
         pass
     await db.documents.delete_one({"id": did})
     await write_audit(db, entity_type="document", entity_id=did, action="delete", user=user)
+    return {"ok": True}
+
+
+# ============================================================
+# PIPELINE (Opportunity funnel — BRD 5 stages with Finance handoff)
+# ============================================================
+@api.get("/pipeline", response_model=List[PipelineOut])
+async def list_pipeline(
+    stage: Optional[str] = None,
+    outcome: Optional[str] = None,
+    search: Optional[str] = None,
+    _: dict = Depends(get_current_user),
+):
+    q: Dict[str, Any] = {}
+    if stage:
+        q["current_stage"] = stage
+    if outcome:
+        q["outcome"] = outcome
+    if search:
+        q["$or"] = [
+            {"opportunity_title": {"$regex": search, "$options": "i"}},
+            {"customer_name": {"$regex": search, "$options": "i"}},
+            {"bd_owner": {"$regex": search, "$options": "i"}},
+        ]
+    rows = await db.pipelines.find(q, {"_id": 0}).sort("updated_at", -1).to_list(2000)
+    return rows
+
+
+@api.get("/pipeline/summary")
+async def pipeline_summary(_: dict = Depends(get_current_user)):
+    rows = await db.pipelines.find({}, {"_id": 0}).to_list(2000)
+    by_stage = {s: {"count": 0, "value": 0.0} for s in PIPELINE_STAGES}
+    total_value = 0.0
+    won_value = 0.0
+    pending_handoff = 0
+    for r in rows:
+        s = r.get("current_stage") or "Prospecting"
+        v = r.get("negotiated_value") or r.get("proposal_value") or r.get("expected_revenue") or 0
+        by_stage.setdefault(s, {"count": 0, "value": 0.0})
+        by_stage[s]["count"] += 1
+        by_stage[s]["value"] += v
+        total_value += v
+        if r.get("outcome") == "Won":
+            won_value += v
+        if r.get("handoff_status") == "Pending Finance":
+            pending_handoff += 1
+    funnel = [{"stage": s, "count": by_stage[s]["count"], "value": by_stage[s]["value"]} for s in PIPELINE_STAGES]
+    return {
+        "total_opportunities": len(rows),
+        "total_value": total_value,
+        "won_value": won_value,
+        "pending_handoff": pending_handoff,
+        "funnel": funnel,
+    }
+
+
+@api.get("/pipeline/{pid}", response_model=PipelineOut)
+async def get_pipeline(pid: str, _: dict = Depends(get_current_user)):
+    row = await db.pipelines.find_one({"id": pid}, {"_id": 0})
+    if not row:
+        raise HTTPException(404, "Opportunity not found")
+    return row
+
+
+@api.post("/pipeline", response_model=PipelineOut)
+async def create_pipeline(payload: PipelineIn, user: dict = Depends(get_current_user)):
+    doc = payload.model_dump()
+    doc["id"] = gen_id()
+    doc["current_stage"] = "Prospecting"
+    doc["handoff_status"] = "Not Applicable"
+    doc["handoff_project_id"] = None
+    doc["handoff_requested_by"] = None
+    doc["handoff_requested_at"] = None
+    doc["handoff_actioned_by"] = None
+    doc["handoff_actioned_at"] = None
+    doc["handoff_comment"] = ""
+    doc["created_at"] = now_iso()
+    doc["updated_at"] = now_iso()
+    doc["created_by"] = user.get("email")
+    await db.pipelines.insert_one(doc)
+    await write_audit(db, entity_type="pipeline", entity_id=doc["id"], action="create", user=user,
+                      field_changes={"opportunity_title": doc["opportunity_title"], "stage": "Prospecting"})
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/pipeline/{pid}", response_model=PipelineOut)
+async def update_pipeline(pid: str, payload: PipelineIn, user: dict = Depends(get_current_user)):
+    existing = await db.pipelines.find_one({"id": pid})
+    if not existing:
+        raise HTTPException(404, "Opportunity not found")
+    updates = payload.model_dump()
+    updates["updated_at"] = now_iso()
+    await db.pipelines.update_one({"id": pid}, {"$set": updates})
+    await write_audit(db, entity_type="pipeline", entity_id=pid, action="update", user=user, field_changes=updates)
+    return await db.pipelines.find_one({"id": pid}, {"_id": 0})
+
+
+@api.post("/pipeline/{pid}/advance", response_model=PipelineOut)
+async def advance_pipeline(pid: str, payload: PipelineStageIn, user: dict = Depends(get_current_user)):
+    existing = await db.pipelines.find_one({"id": pid})
+    if not existing:
+        raise HTTPException(404, "Opportunity not found")
+    if payload.target_stage not in PIPELINE_STAGES:
+        raise HTTPException(400, f"Invalid stage. Allowed: {PIPELINE_STAGES}")
+    upd = {"current_stage": payload.target_stage, "updated_at": now_iso()}
+    await db.pipelines.update_one({"id": pid}, {"$set": upd})
+    await write_audit(db, entity_type="pipeline", entity_id=pid, action="stage_change", user=user,
+                      field_changes={"from": existing.get("current_stage"), "to": payload.target_stage},
+                      reason=payload.reason or "")
+    return await db.pipelines.find_one({"id": pid}, {"_id": 0})
+
+
+@api.post("/pipeline/{pid}/close", response_model=PipelineOut)
+async def close_pipeline(
+    pid: str,
+    outcome: str = Query(..., description="Won or Lost"),
+    reason: Optional[str] = Query("", description="Win/Loss reason"),
+    user: dict = Depends(get_current_user),
+):
+    if outcome not in ("Won", "Lost"):
+        raise HTTPException(400, "outcome must be 'Won' or 'Lost'")
+    existing = await db.pipelines.find_one({"id": pid})
+    if not existing:
+        raise HTTPException(404, "Opportunity not found")
+
+    now = now_iso()
+    upd = {
+        "current_stage": "Closed",
+        "outcome": outcome,
+        "closure_date": datetime.now(timezone.utc).date().isoformat(),
+        "win_loss_reason": reason or existing.get("win_loss_reason", ""),
+        "updated_at": now,
+    }
+    # On Won → create a pending-finance handoff (no Project yet until Finance approves)
+    if outcome == "Won":
+        upd["handoff_status"] = "Pending Finance"
+        upd["handoff_requested_by"] = user.get("email")
+        upd["handoff_requested_at"] = now
+
+    await db.pipelines.update_one({"id": pid}, {"$set": upd})
+    await write_audit(db, entity_type="pipeline", entity_id=pid, action="close", user=user,
+                      field_changes={"outcome": outcome}, reason=reason or "")
+    return await db.pipelines.find_one({"id": pid}, {"_id": 0})
+
+
+@api.post("/pipeline/{pid}/approve-handoff", response_model=PipelineOut)
+async def approve_handoff(
+    pid: str,
+    payload: PipelineHandoffAction,
+    user: dict = Depends(require_role("finance", "admin")),
+):
+    existing = await db.pipelines.find_one({"id": pid})
+    if not existing:
+        raise HTTPException(404, "Opportunity not found")
+    if existing.get("handoff_status") != "Pending Finance":
+        raise HTTPException(400, f"Handoff is not pending (current: {existing.get('handoff_status')})")
+    if existing.get("outcome") != "Won":
+        raise HTTPException(400, "Only Won opportunities can be handed off")
+
+    now = now_iso()
+    if payload.action == "reject":
+        await db.pipelines.update_one({"id": pid}, {"$set": {
+            "handoff_status": "Rejected",
+            "handoff_actioned_by": user.get("email"),
+            "handoff_actioned_at": now,
+            "handoff_comment": payload.comment or "",
+            "updated_at": now,
+        }})
+        await write_audit(db, entity_type="pipeline", entity_id=pid, action="handoff_rejected",
+                          user=user, reason=payload.comment or "")
+        return await db.pipelines.find_one({"id": pid}, {"_id": 0})
+
+    # Approved → create Project from pipeline
+    po_value = existing.get("negotiated_value") or existing.get("proposal_value") or existing.get("expected_revenue") or 0.0
+    margin_pct = existing.get("estimated_margin_pct") or 0.0
+    revenue_total = po_value
+    cost_total = round(revenue_total * (1 - margin_pct / 100.0), 2) if margin_pct else 0.0
+    margin = compute_margin(po_value, revenue_total, cost_total)
+    project_doc = {
+        "id": gen_id(),
+        "project_name": existing["opportunity_title"],
+        "wbs_element": None,
+        "customer_po_number": None,
+        "po_date": None,
+        "start_date": None,
+        "end_date": None,
+        "billing_type": "Monthly",
+        "milestones": [],
+        "customer_id": existing.get("customer_id"),
+        "customer_name": existing.get("customer_name"),
+        "description": existing.get("solution_scope") or "",
+        "currency": existing.get("currency", "INR"),
+        "po_value": po_value,
+        "revenue_total": revenue_total,
+        "cost_total": cost_total,
+        "vendor_pos": [],
+        "country": "India",
+        "pnl_location": None, "pnl_region": None,
+        "airport_adjacency": None, "project_grouping": None,
+        "location": None, "category1": None, "category2": None,
+        "business_category": existing.get("business_category") or "Non-GMR",
+        "retro_pnl_tagging": None,
+        "ownership_email": existing.get("bd_owner"),
+        "stakeholders": existing.get("stakeholders") or [],
+        "baseline_remarks": f"Auto-created from pipeline opportunity {existing['id']}",
+        "finance_remarks": payload.comment or "",
+        "current_stage": "Pipeline",
+        "approval_status": "Not Required",
+        "margin_total": margin["margin_total"],
+        "margin_pct": margin["margin_pct"],
+        "created_at": now, "updated_at": now,
+        "created_by": user.get("email"),
+    }
+    await db.projects.insert_one(project_doc)
+    project_doc.pop("_id", None)
+
+    await db.pipelines.update_one({"id": pid}, {"$set": {
+        "handoff_status": "Approved",
+        "handoff_project_id": project_doc["id"],
+        "handoff_actioned_by": user.get("email"),
+        "handoff_actioned_at": now,
+        "handoff_comment": payload.comment or "",
+        "updated_at": now,
+    }})
+    await write_audit(db, entity_type="pipeline", entity_id=pid, action="handoff_approved",
+                      user=user, field_changes={"project_id": project_doc["id"]},
+                      reason=payload.comment or "")
+    await write_audit(db, entity_type="project", entity_id=project_doc["id"], action="create_from_pipeline",
+                      user=user, field_changes={"pipeline_id": pid})
+    return await db.pipelines.find_one({"id": pid}, {"_id": 0})
+
+
+@api.delete("/pipeline/{pid}")
+async def delete_pipeline(pid: str, user: dict = Depends(require_role("admin"))):
+    existing = await db.pipelines.find_one({"id": pid}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Opportunity not found")
+    await db.pipelines.delete_one({"id": pid})
+    await write_audit(db, entity_type="pipeline", entity_id=pid, action="delete", user=user)
     return {"ok": True}
 
 

@@ -130,7 +130,7 @@ export default function DashboardPage() {
         {/* Secondary KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <KpiTile
-            label="Recognized Revenue"
+            label="Revenue"
             value={formatCurrency(recognized_unbilled.recognized, mode, inrPerUsd)}
             sub={`Billed ${formatCurrency(recognized_unbilled.billed, mode, inrPerUsd)}`}
             testid="kpi-recognized"
@@ -224,7 +224,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="text-[10px] tracking-overline text-[var(--muted)]">Vendor Exposure</div>
-                <div className="font-display text-lg font-bold">By Cost Spend</div>
+                <div className="font-display text-lg font-bold">Top 10 Suppliers · Cost Spend</div>
               </div>
               <Truck size={18} weight="duotone" className="text-[var(--gold)]" />
             </div>
@@ -281,18 +281,21 @@ export default function DashboardPage() {
               </div>
             </div>
             <table className="tbl">
-              <thead><tr><th>Project</th><th>Customer</th><th>End Date</th><th className="num">PO</th></tr></thead>
+              <thead><tr><th>Project</th><th>Flag</th><th>End Date</th><th className="num">PO</th></tr></thead>
               <tbody>
                 {delayed_projects.slice(0, 6).map((p) => (
                   <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)}>
-                    <td className="text-[var(--text)]">{p.project_name}</td>
-                    <td>{p.customer_name || "—"}</td>
+                    <td className="text-[var(--text)]">
+                      <div>{p.project_name}</div>
+                      <div className="text-[11px] text-[var(--muted)]">{p.customer_name || "—"}</div>
+                    </td>
+                    <td><span className="badge flag-delayed">Delayed</span></td>
                     <td className="text-[var(--danger)]">{p.end_date}</td>
                     <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
                   </tr>
                 ))}
                 {delayed_projects.length === 0 && (
-                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">No delayed projects 🎯</td></tr>
+                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">No delayed projects</td></tr>
                 )}
               </tbody>
             </table>
@@ -306,18 +309,21 @@ export default function DashboardPage() {
               </div>
             </div>
             <table className="tbl">
-              <thead><tr><th>Project</th><th>Stage</th><th className="num">Margin %</th><th className="num">PO</th></tr></thead>
+              <thead><tr><th>Project</th><th>Flag</th><th className="num">Margin %</th><th className="num">PO</th></tr></thead>
               <tbody>
                 {low_margin_projects.slice(0, 6).map((p) => (
                   <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)}>
-                    <td>{p.project_name}</td>
-                    <td>{p.current_stage}</td>
+                    <td>
+                      <div>{p.project_name}</div>
+                      <div className="text-[11px] text-[var(--muted)]">{p.current_stage}</div>
+                    </td>
+                    <td><span className="badge flag-low-margin">Low Margin</span></td>
                     <td className="num text-[var(--danger)]">{(p.margin_pct || 0).toFixed(1)}%</td>
                     <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
                   </tr>
                 ))}
                 {low_margin_projects.length === 0 && (
-                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">All projects healthy ✓</td></tr>
+                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">All projects healthy</td></tr>
                 )}
               </tbody>
             </table>

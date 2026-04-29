@@ -488,6 +488,8 @@ function AuditTab({ rows }) {
 // ============================================================
 function DocumentsTab({ projectId, reload }) {
   const [docs, setDocs] = React.useState([]);
+  const [docName, setDocName] = React.useState("");
+  const [pendingFile, setPendingFile] = React.useState(null);
   const [parse, setParse] = React.useState(true);
   const [applyExtracted, setApplyExtracted] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -502,14 +504,28 @@ function DocumentsTab({ projectId, reload }) {
   };
   React.useEffect(() => { load(); /* eslint-disable-line */ }, [projectId]);
 
-  const upload = async (file) => {
+  const stageFile = (file) => {
     if (!file) return;
+    setError("");
+    setPendingFile(file);
+    if (!docName) setDocName(file.name.replace(/\.[^.]+$/, ""));
+  };
+
+  const upload = async () => {
+    if (!pendingFile) { setError("Please choose a file"); return; }
+    if (!docName.trim()) { setError("Document name is required"); return; }
     setBusy(true); setError(""); setLastResult(null);
     try {
-      const fd = new FormData(); fd.append("file", file);
-      const params = new URLSearchParams({ parse: parse ? "true" : "false", apply_extracted: applyExtracted ? "true" : "false" });
+      const fd = new FormData(); fd.append("file", pendingFile);
+      const params = new URLSearchParams({
+        name: docName.trim(),
+        parse: parse ? "true" : "false",
+        apply_extracted: applyExtracted ? "true" : "false",
+      });
       const { data } = await api.post(`/projects/${projectId}/documents?${params}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       setLastResult(data);
+      setPendingFile(null);
+      setDocName("");
       load();
       if (Object.keys(data.applied || {}).length) reload();
     } catch (e) {
@@ -525,7 +541,7 @@ function DocumentsTab({ projectId, reload }) {
   };
 
   const remove = async (d) => {
-    if (!window.confirm(`Delete ${d.file_name}?`)) return;
+    if (!window.confirm(`Delete ${d.name || d.file_name}?`)) return;
     await api.delete(`/documents/${d.id}`); load();
   };
 
@@ -535,6 +551,36 @@ function DocumentsTab({ projectId, reload }) {
 
       <div className="tile p-5 mb-5">
         <div className="text-[10px] tracking-overline text-[var(--muted)] mb-3">Upload Customer PO / Vendor PO / Contract / Any document</div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1.5">
+              Document Name <span className="text-[var(--gold)]">*</span>
+            </label>
+            <input
+              className="input"
+              placeholder="e.g. Customer PO FY26 Q2"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              data-testid="doc-name-input"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1.5">
+              File <span className="text-[var(--gold)]">*</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input ref={inputRef} type="file" className="hidden" onChange={(e) => stageFile(e.target.files?.[0])} data-testid="doc-input" />
+              <button type="button" className="btn-secondary text-xs" onClick={() => inputRef.current?.click()} data-testid="doc-choose-btn">
+                {pendingFile ? "Change file" : "Choose File"}
+              </button>
+              <div className="text-xs text-[var(--muted)] truncate flex-1" data-testid="doc-pending-name">
+                {pendingFile ? `${pendingFile.name} · ${(pendingFile.size / 1024).toFixed(1)} KB` : "No file selected"}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-4 mb-3">
           <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer" data-testid="doc-parse-toggle">
             <input type="checkbox" checked={parse} onChange={(e) => setParse(e.target.checked)} />
@@ -545,24 +591,31 @@ function DocumentsTab({ projectId, reload }) {
             Apply extracted fields to project (only fills empty fields)
           </label>
         </div>
+
         <div
           className={`border-2 border-dashed p-8 text-center transition-all ${drag ? "border-[var(--gold)] bg-[color-mix(in_srgb,var(--gold)_15%,transparent)]" : "border-[var(--border)]"}`}
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
-          onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files?.[0]); }}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); stageFile(e.dataTransfer.files?.[0]); }}
           data-testid="doc-drop-zone"
         >
-          <div className="text-sm text-[var(--muted)]">Drag & drop a file here, or</div>
-          <input ref={inputRef} type="file" className="hidden" onChange={(e) => upload(e.target.files?.[0])} data-testid="doc-input" />
-          <button className="btn-primary mt-3" onClick={() => inputRef.current?.click()} disabled={busy} data-testid="doc-upload-btn">
-            {busy ? "Uploading…" : "Choose File"}
+          <div className="text-sm text-[var(--muted)]">
+            {pendingFile ? "File ready — enter a name then click Save" : "Drag & drop a file here, or use Choose File above"}
+          </div>
+          <button
+            className="btn-primary mt-3"
+            onClick={upload}
+            disabled={busy || !pendingFile || !docName.trim()}
+            data-testid="doc-upload-btn"
+          >
+            {busy ? "Uploading…" : "Save Document"}
           </button>
         </div>
         {error && <div className="text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-2 mt-3 border border-[color-mix(in_srgb,var(--danger)_30%,transparent)]">{error}</div>}
         {lastResult?.document && (
           <div className="mt-4 border border-[var(--border)] p-4" data-testid="doc-last-result">
             <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Last upload</div>
-            <div className="text-sm font-medium">{lastResult.document.file_name}</div>
+            <div className="text-sm font-medium">{lastResult.document.name || lastResult.document.file_name}</div>
             {lastResult.document.parsed && (
               <div className="mt-2 text-xs space-y-1">
                 <div className="text-[var(--muted)] tracking-overline text-[10px]">Extracted</div>
@@ -577,7 +630,7 @@ function DocumentsTab({ projectId, reload }) {
 }, null, 2)}
                 </pre>
                 {Object.keys(lastResult.applied || {}).length > 0 && (
-                  <div className="text-[var(--success)]">✓ Applied {Object.keys(lastResult.applied).length} fields to project</div>
+                  <div className="text-[var(--success)]">Applied {Object.keys(lastResult.applied).length} fields to project</div>
                 )}
               </div>
             )}
@@ -586,12 +639,12 @@ function DocumentsTab({ projectId, reload }) {
       </div>
 
       <table className="tbl tile">
-        <thead><tr><th>File</th><th>Type</th><th>Size</th><th>Uploaded</th><th>Parsed</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>File</th><th>Size</th><th>Uploaded</th><th>Parsed</th><th></th></tr></thead>
         <tbody>
           {docs.map((d) => (
             <tr key={d.id} data-testid={`doc-row-${d.id}`}>
-              <td className="font-medium">{d.file_name}</td>
-              <td className="text-xs text-[var(--muted)]">{d.content_type}</td>
+              <td className="font-medium">{d.name || d.file_name}</td>
+              <td className="text-xs text-[var(--muted)]">{d.file_name}</td>
               <td className="num text-xs">{(d.size / 1024).toFixed(1)} KB</td>
               <td className="text-xs">{formatDateTime(d.uploaded_at)}<div className="text-[var(--muted)]">{d.uploaded_by}</div></td>
               <td>{d.parsed ? <StatusBadge status="Approved" /> : <StatusBadge status="Not Required" />}</td>

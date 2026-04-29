@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useCurrency } from "@/lib/currency";
@@ -6,13 +6,15 @@ import { useTheme } from "@/lib/theme";
 import {
   ChartLineUp, FolderSimple, Database, UploadSimple, GavelIcon,
   ShieldCheck, ClockCounterClockwise, SignOut, Wallet, UsersThree, Truck, UserCircle,
-  Palette, Gear,
+  Palette, Gear, FunnelSimple, ArrowsClockwise, CaretLeft, CaretRight,
 } from "@phosphor-icons/react";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: ChartLineUp, testid: "sidebar-dashboard" },
+  { to: "/pipeline", label: "Pipeline", icon: FunnelSimple, testid: "sidebar-pipeline" },
   { to: "/projects", label: "Projects", icon: FolderSimple, testid: "sidebar-projects" },
-  { to: "/customers", label: "Customers", icon: UsersThree, testid: "sidebar-customers" },
+  { to: "/change-requests", label: "Change Requests", icon: ArrowsClockwise, testid: "sidebar-change-requests" },
+  { to: "/customers", label: "Customer Profile", icon: UsersThree, testid: "sidebar-customers" },
   { to: "/suppliers", label: "Suppliers", icon: Truck, testid: "sidebar-suppliers" },
   { to: "/employees", label: "Employees", icon: UserCircle, testid: "sidebar-employees" },
   { to: "/uploads", label: "Excel Upload", icon: UploadSimple, testid: "sidebar-uploads" },
@@ -32,57 +34,88 @@ export default function AppLayout({ children }) {
   const { theme, setTheme, themes } = useTheme();
   const navigate = useNavigate();
   const [showThemes, setShowThemes] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("cp_sidebar_collapsed") === "1");
+
+  useEffect(() => {
+    localStorage.setItem("cp_sidebar_collapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  const asideWidth = collapsed ? "w-16" : "w-64";
 
   return (
     <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <aside
-        className="w-64 flex flex-col"
+        className={`${asideWidth} flex flex-col transition-all duration-200 relative ${collapsed ? "sidebar-collapsed" : ""}`}
         style={{ backgroundColor: "var(--sidebar)", color: "var(--sidebar-text)" }}
         data-testid="app-sidebar"
       >
-        <div className="px-6 py-6 border-b" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+        <button
+          className="sidebar-collapse-btn"
+          onClick={() => setCollapsed((v) => !v)}
+          data-testid="sidebar-collapse-btn"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <CaretRight size={12} weight="bold" /> : <CaretLeft size={12} weight="bold" />}
+        </button>
+
+        <div className={`${collapsed ? "px-3 py-5" : "px-6 py-6"} border-b`} style={{ borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 flex items-center justify-center" style={{ background: "var(--gold)" }}>
+            <div className="w-8 h-8 flex items-center justify-center shrink-0" style={{ background: "var(--gold)" }}>
               <Wallet weight="bold" size={18} className="text-black" />
             </div>
-            <div>
-              <div className="font-display text-lg font-bold tracking-tight">CRacker Pro</div>
-              <div className="text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.5)" }}>Business Finance</div>
-            </div>
+            {!collapsed && (
+              <div>
+                <div className="font-display text-lg font-bold tracking-tight">CRacker Pro</div>
+                <div className="text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.5)" }}>Business Finance</div>
+              </div>
+            )}
           </div>
         </div>
 
         <nav className="flex-1 py-3 overflow-y-auto">
-          <div className="px-4 py-2 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Workspace</div>
+          <div className="nav-section-label px-4 py-2 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Workspace</div>
           {NAV.map((n) => (
             <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={n.testid}>
               <n.icon size={18} weight="duotone" />
-              <span>{n.label}</span>
+              <span className="nav-label">{n.label}</span>
             </NavLink>
           ))}
           {user?.role === "admin" && (
             <>
-              <div className="px-4 py-2 mt-4 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Administration</div>
+              <div className="nav-section-label px-4 py-2 mt-4 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Administration</div>
               {ADMIN_NAV.map((n) => (
                 <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={n.testid}>
                   <n.icon size={18} weight="duotone" />
-                  <span>{n.label}</span>
+                  <span className="nav-label">{n.label}</span>
                 </NavLink>
               ))}
             </>
           )}
         </nav>
 
-        <div className="px-4 py-4 border-t" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold" data-testid="sidebar-user-name">{user?.name}</div>
-              <div className="text-[11px] capitalize" style={{ color: "rgba(255,255,255,0.5)" }}>{user?.role}</div>
-            </div>
-            <button className="btn-ghost" style={{ color: "rgba(255,255,255,0.7)" }} onClick={async () => { await logout(); navigate("/login"); }} data-testid="logout-btn">
+        <div className={`${collapsed ? "px-2 py-3" : "px-4 py-4"} border-t`} style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+          {collapsed ? (
+            <button
+              className="btn-ghost w-full flex items-center justify-center"
+              style={{ color: "rgba(255,255,255,0.7)" }}
+              onClick={async () => { await logout(); navigate("/login"); }}
+              title={`Logout (${user?.name || ""})`}
+              data-testid="logout-btn"
+            >
               <SignOut size={18} weight="bold" />
             </button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate" data-testid="sidebar-user-name">{user?.name}</div>
+                <div className="text-[11px] capitalize" style={{ color: "rgba(255,255,255,0.5)" }}>{user?.role}</div>
+              </div>
+              <button className="btn-ghost" style={{ color: "rgba(255,255,255,0.7)" }} onClick={async () => { await logout(); navigate("/login"); }} data-testid="logout-btn">
+                <SignOut size={18} weight="bold" />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 

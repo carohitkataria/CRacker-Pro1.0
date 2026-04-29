@@ -256,6 +256,24 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .badge-neutral { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
 .badge-gold { background: color-mix(in srgb, var(--gold) 14%, transparent); color: var(--gold); border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent); }
 
+/* Management flag badges — BRD: distinct high-signal colors */
+.flag-gmr        { background: color-mix(in srgb, var(--gold) 20%, transparent);     color: var(--gold);    border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent); }
+.flag-non-gmr    { background: color-mix(in srgb, #3D8B7A 18%, transparent);          color: #3D8B7A;        border: 1px solid color-mix(in srgb, #3D8B7A 45%, transparent); }
+.flag-delayed    { background: color-mix(in srgb, var(--danger) 16%, transparent);   color: var(--danger);  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); }
+.flag-low-margin { background: color-mix(in srgb, var(--warning) 16%, transparent);  color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); }
+.flag-high       { background: color-mix(in srgb, #E07A3C 18%, transparent);          color: #E07A3C;        border: 1px solid color-mix(in srgb, #E07A3C 45%, transparent); }
+.flag-medium     { background: color-mix(in srgb, var(--muted) 20%, transparent);     color: var(--text);    border: 1px solid var(--border); }
+.flag-low        { background: color-mix(in srgb, #7BB661 18%, transparent);          color: #5A8A44;        border: 1px solid color-mix(in srgb, #7BB661 45%, transparent); }
+
+/* Pipeline stage chips */
+.pipe-prospecting { background: color-mix(in srgb, #E07A3C 14%, transparent); color: #E07A3C; border: 1px solid color-mix(in srgb, #E07A3C 40%, transparent); }
+.pipe-active      { background: color-mix(in srgb, var(--gold) 14%, transparent); color: var(--gold); border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent); }
+.pipe-proposal    { background: color-mix(in srgb, #5C2B84 14%, transparent); color: #5C2B84; border: 1px solid color-mix(in srgb, #5C2B84 40%, transparent); }
+.pipe-negotiation { background: color-mix(in srgb, #3D8B7A 14%, transparent); color: #3D8B7A; border: 1px solid color-mix(in srgb, #3D8B7A 40%, transparent); }
+.pipe-closed      { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.pipe-won         { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 35%, transparent); }
+.pipe-lost        { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); }
+
 /* Table */
 .tbl { width: 100%; border-collapse: collapse; font-size: 0.875rem; color: var(--text); }
 .tbl thead th {
@@ -277,6 +295,27 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 }
 .nav-link:hover { color: var(--gold-soft); background: rgba(255,255,255,0.06); }
 .nav-link.active { color: var(--gold-soft); background: color-mix(in srgb, var(--gold) 12%, transparent); border-left-color: var(--gold); }
+
+/* Collapsed sidebar — icons only with hover tooltip */
+.sidebar-collapsed .nav-link { justify-content: center; padding: 0.6rem 0; gap: 0; position: relative; }
+.sidebar-collapsed .nav-link .nav-label {
+  position: absolute; left: 100%; margin-left: 8px; padding: 4px 10px;
+  background: var(--sidebar); color: var(--sidebar-text); white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  opacity: 0; pointer-events: none; transform: translateX(-4px); transition: all 0.15s;
+  z-index: 60;
+}
+.sidebar-collapsed .nav-link:hover .nav-label { opacity: 1; transform: translateX(0); pointer-events: auto; }
+.sidebar-collapsed .nav-section-label { display: none; }
+.sidebar-collapse-btn {
+  position: absolute; top: 18px; right: -12px; z-index: 20;
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  background: var(--sidebar); border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  color: var(--gold-soft); cursor: pointer; border-radius: 50%;
+  transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+.sidebar-collapse-btn:hover { transform: scale(1.1); }
 
 [data-debug-wrapper="true"] { display: contents !important; }
 

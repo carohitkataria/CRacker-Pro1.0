@@ -8,11 +8,12 @@ import { useNavigate } from "react-router-dom";
 
 const ENTITIES = {
   customers: {
-    label: "Customers", apiPath: "customers", entity: "customer",
+    label: "Customer Profile", apiPath: "customers", entity: "customer",
     columns: [
       { key: "customer_name", label: "Name" },
       { key: "sap_customer_code", label: "SAP Code" },
-      { key: "contact_person", label: "Contact" },
+      { key: "industry", label: "Industry" },
+      { key: "contact_person", label: "Primary Contact" },
       { key: "email", label: "Email" },
       { key: "phone", label: "Phone" },
       { key: "balance_outstanding_sap", label: "Outstanding", type: "currency" },
@@ -21,11 +22,20 @@ const ENTITIES = {
     fields: [
       { key: "customer_name", label: "Customer Name", required: true },
       { key: "sap_customer_code", label: "SAP Customer Code" },
+      { key: "industry", label: "Industry" },
+      { key: "sector", label: "Sector" },
       { key: "balance_outstanding_sap", label: "Balance Outstanding (SAP)", type: "number" },
-      { key: "contact_person", label: "Contact Person" },
-      { key: "email", label: "Email" },
-      { key: "phone", label: "Phone" },
+      { key: "contact_person", label: "Primary Contact Person" },
+      { key: "email", label: "Primary Email" },
+      { key: "phone", label: "Primary Phone" },
+      { key: "secondary_contact_person", label: "Secondary Contact Person" },
+      { key: "secondary_email", label: "Secondary Email" },
+      { key: "secondary_phone", label: "Secondary Phone" },
+      { key: "account_owner_email", label: "Account Owner Email" },
+      { key: "website", label: "Website" },
       { key: "country", label: "Country" },
+      { key: "address_billing", label: "Billing Address", textarea: true },
+      { key: "address_shipping", label: "Shipping Address", textarea: true },
       { key: "risk_notes", label: "Risk Notes", textarea: true },
     ],
   },

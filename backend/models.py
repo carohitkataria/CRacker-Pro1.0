@@ -65,6 +65,16 @@ class CustomerIn(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     country: Optional[str] = None
+    # Enriched profile (BRD)
+    industry: Optional[str] = None
+    sector: Optional[str] = None
+    address_billing: Optional[str] = None
+    address_shipping: Optional[str] = None
+    secondary_contact_person: Optional[str] = None
+    secondary_email: Optional[str] = None
+    secondary_phone: Optional[str] = None
+    website: Optional[str] = None
+    account_owner_email: Optional[str] = None
 
 
 class CustomerOut(CustomerIn):
@@ -268,3 +278,83 @@ class UploadLogOut(BaseModel):
     failures: List[Dict[str, Any]] = []
     uploaded_by: Optional[str] = None
     uploaded_at: str
+
+
+# ---------- PIPELINE (Opportunity funnel, BRD 5 stages) ----------
+PIPELINE_STAGES = [
+    "Prospecting",
+    "Active Discussion",
+    "Proposal Submitted",
+    "Evaluation/Negotiation",
+    "Closed",
+]
+PIPELINE_OUTCOMES = ["Open", "Won", "Lost"]
+HANDOFF_STATUSES = ["Not Applicable", "Pending Finance", "Approved", "Rejected"]
+
+
+class PipelineIn(BaseModel):
+    # Stage 1 — Prospecting
+    opportunity_title: str
+    customer_name: Optional[str] = None
+    customer_id: Optional[str] = None
+    bd_owner: Optional[str] = None
+    expected_revenue: float = 0.0
+    currency: str = "INR"
+    source: Optional[str] = None  # referral / cold / RFP / repeat
+    industry: Optional[str] = None
+
+    # Stage 2 — Active Discussion
+    solution_scope: Optional[str] = None
+    expected_timeline: Optional[str] = None
+    competitors: Optional[str] = None
+    stakeholders: List[str] = []
+
+    # Stage 3 — Proposal Submitted
+    proposal_value: float = 0.0
+    proposal_submitted_on: Optional[str] = None
+    proposal_validity: Optional[str] = None
+    proposal_notes: Optional[str] = ""
+
+    # Stage 4 — Evaluation / Negotiation
+    negotiated_value: float = 0.0
+    estimated_margin_pct: float = 0.0
+    expected_decision_date: Optional[str] = None
+    negotiation_notes: Optional[str] = ""
+
+    # Stage 5 — Closed
+    outcome: Literal["Open", "Won", "Lost"] = "Open"
+    closure_date: Optional[str] = None
+    win_loss_reason: Optional[str] = ""
+
+    # Management flags
+    business_category: Optional[str] = "Non-GMR"  # GMR / Non-GMR
+    priority: Optional[str] = "Medium"  # High / Medium / Low
+    remarks: Optional[str] = ""
+
+
+class PipelineOut(PipelineIn):
+    id: str
+    current_stage: str = "Prospecting"
+    handoff_status: str = "Not Applicable"  # Not Applicable / Pending Finance / Approved / Rejected
+    handoff_project_id: Optional[str] = None
+    handoff_requested_by: Optional[str] = None
+    handoff_requested_at: Optional[str] = None
+    handoff_actioned_by: Optional[str] = None
+    handoff_actioned_at: Optional[str] = None
+    handoff_comment: Optional[str] = ""
+    created_at: str
+    updated_at: str
+    created_by: Optional[str] = None
+
+
+class PipelineStageIn(BaseModel):
+    target_stage: Literal[
+        "Prospecting", "Active Discussion", "Proposal Submitted",
+        "Evaluation/Negotiation", "Closed",
+    ]
+    reason: Optional[str] = ""
+
+
+class PipelineHandoffAction(BaseModel):
+    action: Literal["approve", "reject"]
+    comment: Optional[str] = ""

@@ -294,14 +294,14 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Project Name *">
-              <input className="input" required value={form.project_name} onChange={(e) => set("project_name", e.target.value)} data-testid="form-project-name" />
+            <Field label="Project Name *" required>
+              <input className="input" value={form.project_name} onChange={(e) => set("project_name", e.target.value)} data-testid="form-project-name" />
             </Field>
-            <Field label="WBS Element">
+            <Field label="WBS Element *" required>
               <input className="input font-mono" value={form.wbs_element || ""} onChange={(e) => set("wbs_element", e.target.value)} data-testid="form-wbs" />
             </Field>
 
-            <Field label="Customer">
+            <Field label="Customer *" required>
               <div className="flex gap-2">
                 <select className="input flex-1" value={form.customer_id || ""} onChange={(e) => {
                   const id = e.target.value;
@@ -317,32 +317,32 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
                 </button>
               </div>
             </Field>
-            <Field label="Customer PO Number">
+            <Field label="Customer PO Number *" required>
               <input className="input" value={form.customer_po_number || ""} onChange={(e) => set("customer_po_number", e.target.value)} />
             </Field>
 
-            <Field label="PO Date"><input type="date" className="input" value={form.po_date || ""} onChange={(e) => set("po_date", e.target.value)} /></Field>
-            <Field label="Start Date"><input type="date" className="input" value={form.start_date || ""} onChange={(e) => set("start_date", e.target.value)} /></Field>
-            <Field label="End Date"><input type="date" className="input" value={form.end_date || ""} onChange={(e) => set("end_date", e.target.value)} /></Field>
-            <Field label="Billing Type">
+            <Field label="PO Date *" required><input type="date" className="input" value={form.po_date || ""} onChange={(e) => set("po_date", e.target.value)} /></Field>
+            <Field label="Start Date *" required><input type="date" className="input" value={form.start_date || ""} onChange={(e) => set("start_date", e.target.value)} /></Field>
+            <Field label="End Date *" required><input type="date" className="input" value={form.end_date || ""} onChange={(e) => set("end_date", e.target.value)} /></Field>
+            <Field label="Billing Type *" required>
               <select className="input" value={form.billing_type} onChange={(e) => set("billing_type", e.target.value)} data-testid="form-billing-type">
                 <option>Monthly</option><option>Milestone</option>
               </select>
             </Field>
 
-            <Field label="PO Value (₹)"><input type="number" className="input font-mono" value={form.po_value} onChange={(e) => set("po_value", e.target.value)} data-testid="form-po-value" /></Field>
-            <Field label="Revenue Total (₹)"><input type="number" className="input font-mono" value={form.revenue_total} onChange={(e) => set("revenue_total", e.target.value)} /></Field>
-            <Field label="Cost Total (₹)"><input type="number" className="input font-mono" value={form.cost_total} onChange={(e) => set("cost_total", e.target.value)} /></Field>
-            <Field label="Business Category">
+            <Field label="PO Value (₹) *" required><input type="number" className="input font-mono" value={form.po_value} onChange={(e) => set("po_value", e.target.value)} data-testid="form-po-value" /></Field>
+            <Field label="Revenue Total (₹) *" required><input type="number" className="input font-mono" value={form.revenue_total} onChange={(e) => set("revenue_total", e.target.value)} /></Field>
+            <Field label="Cost Total (₹) *" required><input type="number" className="input font-mono" value={form.cost_total} onChange={(e) => set("cost_total", e.target.value)} /></Field>
+            <Field label="Business Category *" required>
               <select className="input" value={form.business_category} onChange={(e) => set("business_category", e.target.value)}>
                 <option>GMR</option><option>Non-GMR</option>
               </select>
             </Field>
 
-            <Field label="P&L Location"><input className="input" value={form.pnl_location || ""} onChange={(e) => set("pnl_location", e.target.value)} /></Field>
-            <Field label="P&L Region"><input className="input" value={form.pnl_region || ""} onChange={(e) => set("pnl_region", e.target.value)} /></Field>
-            <Field label="Location"><input className="input" value={form.location || ""} onChange={(e) => set("location", e.target.value)} /></Field>
-            <Field label="Ownership Email"><input className="input" value={form.ownership_email || ""} onChange={(e) => set("ownership_email", e.target.value)} /></Field>
+            <Field label="P&L Location *" required><input className="input" value={form.pnl_location || ""} onChange={(e) => set("pnl_location", e.target.value)} /></Field>
+            <Field label="P&L Region *" required><input className="input" value={form.pnl_region || ""} onChange={(e) => set("pnl_region", e.target.value)} /></Field>
+            <Field label="Location *" required><input className="input" value={form.location || ""} onChange={(e) => set("location", e.target.value)} /></Field>
+            <Field label="Ownership Email *" required><input className="input" value={form.ownership_email || ""} onChange={(e) => set("ownership_email", e.target.value)} /></Field>
 
             <Field label="Description" full><textarea className="input" rows={2} value={form.description || ""} onChange={(e) => set("description", e.target.value)} /></Field>
             <Field label="Baseline Remarks" full><textarea className="input" rows={2} value={form.baseline_remarks || ""} onChange={(e) => set("baseline_remarks", e.target.value)} /></Field>

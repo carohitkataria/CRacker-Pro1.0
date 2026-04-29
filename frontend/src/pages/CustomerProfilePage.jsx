@@ -35,21 +35,64 @@ export default function CustomerProfilePage() {
         {/* Contact + risk strip */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="tile p-5">
-            <div className="text-[10px] tracking-overline text-[var(--muted)]">Contact</div>
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">Primary Contact</div>
             <div className="font-display font-bold mt-1">{customer.contact_person || "—"}</div>
             <div className="text-xs text-[var(--muted)] mt-2 flex items-center gap-1.5"><EnvelopeSimple size={12}/> {customer.email || "—"}</div>
             <div className="text-xs text-[var(--muted)] mt-1 flex items-center gap-1.5"><Phone size={12}/> {customer.phone || "—"}</div>
+            {customer.secondary_contact_person && (
+              <div className="mt-3 pt-3 border-t border-[var(--border-soft)]">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Secondary Contact</div>
+                <div className="text-sm mt-1">{customer.secondary_contact_person}</div>
+                <div className="text-xs text-[var(--muted)] mt-1">{customer.secondary_email || ""} {customer.secondary_phone ? `· ${customer.secondary_phone}` : ""}</div>
+              </div>
+            )}
           </div>
           <div className="tile p-5">
             <div className="text-[10px] tracking-overline text-[var(--muted)]">SAP Outstanding</div>
             <div className="font-mono font-semibold text-2xl mt-1 text-[var(--gold)]">{formatCurrency(customer.balance_outstanding_sap, mode, inrPerUsd)}</div>
             <div className="text-xs text-[var(--muted)] mt-1">Sync from SAP master</div>
+            {(customer.industry || customer.sector) && (
+              <div className="mt-3 pt-3 border-t border-[var(--border-soft)] text-xs">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Industry / Sector</div>
+                <div className="mt-1">{[customer.industry, customer.sector].filter(Boolean).join(" · ") || "—"}</div>
+              </div>
+            )}
           </div>
           <div className={`tile p-5 ${customer.risk_notes ? "border-[#B45309]" : ""}`}>
             <div className="text-[10px] tracking-overline text-[var(--muted)] flex items-center gap-1"><WarningOctagon size={12}/> Risk Notes</div>
             <div className="text-sm mt-1 text-[var(--text)]">{customer.risk_notes || "No risk flagged"}</div>
+            {customer.account_owner_email && (
+              <div className="mt-3 pt-3 border-t border-[var(--border-soft)] text-xs">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Account Owner</div>
+                <div className="mt-1">{customer.account_owner_email}</div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Addresses */}
+        {(customer.address_billing || customer.address_shipping || customer.website) && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-testid="customer-addresses">
+            {customer.address_billing && (
+              <div className="tile p-5">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Billing Address</div>
+                <div className="text-sm mt-1 whitespace-pre-line">{customer.address_billing}</div>
+              </div>
+            )}
+            {customer.address_shipping && (
+              <div className="tile p-5">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Shipping Address</div>
+                <div className="text-sm mt-1 whitespace-pre-line">{customer.address_shipping}</div>
+              </div>
+            )}
+            {customer.website && (
+              <div className="tile p-5">
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Website</div>
+                <a href={customer.website} target="_blank" rel="noreferrer" className="text-sm mt-1 block text-[var(--gold)] underline">{customer.website}</a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Totals */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
