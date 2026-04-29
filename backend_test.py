@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 import httpx
 
 # Backend URL from frontend .env
-BACKEND_URL = "https://auto-fill-projects.preview.emergentagent.com/api"
+BACKEND_URL = "https://clean-interface-65.preview.emergentagent.com/api"
 
 # Test credentials
 ADMIN_EMAIL = "admin@crackerpro.com"
