@@ -56,6 +56,25 @@ class PasswordChange(BaseModel):
 
 
 # ---------- CUSTOMER ----------
+class CustomerAddress(BaseModel):
+    label: str = "Office"
+    line1: Optional[str] = ""
+    line2: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    pincode: Optional[str] = ""
+    country: Optional[str] = ""
+
+
+class CustomerContact(BaseModel):
+    role: Optional[str] = "Influencer"  # Influencer / Procurement / Finance / Tech Evaluator / Other
+    name: Optional[str] = ""
+    designation: Optional[str] = ""
+    department: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+
+
 class CustomerIn(BaseModel):
     customer_name: str
     sap_customer_code: Optional[str] = None
@@ -75,6 +94,16 @@ class CustomerIn(BaseModel):
     secondary_phone: Optional[str] = None
     website: Optional[str] = None
     account_owner_email: Optional[str] = None
+    # BRD Apr 2026 — full master
+    parent_group: Optional[str] = None
+    state: Optional[str] = None
+    region: Optional[str] = None  # auto-derivable from country (e.g. APAC, EMEA)
+    domestic_international: Optional[str] = None  # Domestic / International
+    business_category: Optional[str] = None  # GMR / Non-GMR
+    primary_designation: Optional[str] = None
+    primary_department: Optional[str] = None
+    addresses: List[CustomerAddress] = []
+    additional_contacts: List[CustomerContact] = []
 
 
 class CustomerOut(CustomerIn):
@@ -163,6 +192,13 @@ class ProjectIn(BaseModel):
     stakeholders: List[str] = []
     baseline_remarks: Optional[str] = ""
     finance_remarks: Optional[str] = ""
+    # BRD Apr 2026 — Management Review flags + extended fields
+    md_review_required: bool = False
+    cfo_review_required: bool = False
+    ceo_visibility: bool = False
+    strategic_deal: bool = False
+    finance_spoc_email: Optional[str] = None
+    pipeline_id: Optional[str] = None  # link back to originating pipeline opportunity
 
 
 class ProjectOut(ProjectIn):
@@ -293,42 +329,109 @@ HANDOFF_STATUSES = ["Not Applicable", "Pending Finance", "Approved", "Rejected"]
 
 
 class PipelineIn(BaseModel):
-    # Stage 1 — Prospecting
+    # ===== Stage 1 — Prospecting =====
     opportunity_title: str
+    opportunity_id: Optional[str] = None  # auto-generated; surfaced in UI
     customer_name: Optional[str] = None
     customer_id: Optional[str] = None
     bd_owner: Optional[str] = None
     expected_revenue: float = 0.0
-    currency: str = "INR"
-    source: Optional[str] = None  # referral / cold / RFP / repeat
+    currency: str = "USD"  # BRD default USD
+    source: Optional[str] = None  # legacy lead source string
     industry: Optional[str] = None
 
-    # Stage 2 — Active Discussion
+    # New BRD Stage 1 fields
+    opportunity_category: Literal["Project", "Change Request"] = "Project"
+    opportunity_type: Optional[str] = None  # New Business / Existing Client Expansion / Renewal / Cross-sell / Upsell
+    solution_line: Optional[str] = None     # Airport IT / Cybersecurity / Network / etc.
+    business_need: Optional[str] = ""
+    nature_of_work: Optional[str] = None    # High Resource Cost / High TP Cost / Hybrid
+    lead_source: Optional[str] = None       # Referral / Tender / RFP / Partner / Direct / Event / Govt Bid
+    opportunity_source_type: Optional[str] = None  # Inbound / Outbound / Partner-led / Consultant-led
+    strategic_relevance: Optional[str] = None      # High / Medium / Low
+    relationship_strength: Optional[str] = None    # Strong / Medium / Weak
+
+    # ===== Stage 2 — Active Discussion =====
     solution_scope: Optional[str] = None
     expected_timeline: Optional[str] = None
     competitors: Optional[str] = None
-    stakeholders: List[str] = []
+    stakeholders: List[str] = []  # legacy list of emails
+    decision_maker_name: Optional[str] = None
+    decision_maker_designation: Optional[str] = None
+    influencer_contact: Optional[str] = None
+    procurement_contact: Optional[str] = None
+    finance_contact: Optional[str] = None
+    is_rfp_available: Optional[bool] = False
+    rfp_number: Optional[str] = None
+    competitor_involved: Optional[bool] = False
+    key_competitors: Optional[str] = None
+    customer_budget_approved: Optional[bool] = False
+    customer_funding_confirmed: Optional[bool] = False
+    last_interaction_date: Optional[str] = None
+    next_action: Optional[str] = ""
+    next_action_owner: Optional[str] = None
+    next_followup_date: Optional[str] = None
+    estimated_deal_value: float = 0.0
+    probability_pct: float = 0.0
 
-    # Stage 3 — Proposal Submitted
+    # ===== Stage 3 — Proposal Submitted =====
     proposal_value: float = 0.0
     proposal_submitted_on: Optional[str] = None
     proposal_validity: Optional[str] = None
     proposal_notes: Optional[str] = ""
+    acv: float = 0.0  # Annual Contract Value
+    tcv: float = 0.0  # Total Contract Value
+    one_time_revenue: float = 0.0
+    recurring_revenue: float = 0.0
+    expected_gross_margin_pct: float = 0.0
+    expected_capex: float = 0.0
+    expected_tp_opex: float = 0.0
+    expected_resource_cost: float = 0.0
+    payment_terms: Optional[str] = ""
+    contract_duration: Optional[str] = None
+    revenue_start_date: Optional[str] = None
+    expected_closure_date: Optional[str] = None
+    expected_go_live_date: Optional[str] = None
+    forecast_category: Optional[str] = None  # Commit / Best Case / Pipeline / Upside
+    commercial_submitted_date: Optional[str] = None
+    deal_qualification_score: Optional[float] = None
 
-    # Stage 4 — Evaluation / Negotiation
+    # ===== Stage 4 — Evaluation / Negotiation =====
     negotiated_value: float = 0.0
     estimated_margin_pct: float = 0.0
     expected_decision_date: Optional[str] = None
     negotiation_notes: Optional[str] = ""
+    poc_required: Optional[bool] = False
+    poc_status: Optional[str] = None
+    technical_evaluation_status: Optional[str] = None
+    legal_review_status: Optional[str] = None
+    procurement_status: Optional[str] = None
+    approval_tracking_status: Optional[str] = None
 
-    # Stage 5 — Closed
-    outcome: Literal["Open", "Won", "Lost"] = "Open"
+    # ===== Stage 5 — Closed =====
+    outcome: Literal["Open", "Won", "Lost", "Deferred"] = "Open"
     closure_date: Optional[str] = None
     win_loss_reason: Optional[str] = ""
+    won_against_competitor: Optional[str] = None
+    contract_signed_date: Optional[str] = None
+    customer_po_number: Optional[str] = None
+    contract_id: Optional[str] = None
+    billing_frequency: Optional[str] = None  # Recurring / Milestone / Hybrid
+    final_commercial_value: float = 0.0
+    final_revenue_start_date: Optional[str] = None
+    final_go_live_date: Optional[str] = None
+    lessons_learned: Optional[str] = ""
+    competitor_won_against_us: Optional[str] = None
+    expected_revisit_date: Optional[str] = None
+    closed_milestones: List[Dict[str, Any]] = []  # parsed from PDF/Excel + manual edit
 
-    # Management flags
+    # ===== Management flags & meta =====
     business_category: Optional[str] = "Non-GMR"  # GMR / Non-GMR
-    priority: Optional[str] = "Medium"  # High / Medium / Low
+    priority: Optional[str] = "Medium"
+    md_review_required: bool = False
+    cfo_review_required: bool = False
+    ceo_visibility: bool = False
+    strategic_deal: bool = False
     remarks: Optional[str] = ""
 
 

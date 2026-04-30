@@ -19,6 +19,7 @@ import ApprovalMatrixPage from "@/pages/ApprovalMatrixPage";
 import SettingsPage from "@/pages/SettingsPage";
 import PipelinePage from "@/pages/PipelinePage";
 import ChangeRequestsPage from "@/pages/ChangeRequestsPage";
+import WBSBudgetPage from "@/pages/WBSBudgetPage";
 
 function Protected({ children, adminOnly }) {
   const { user } = useAuth();
@@ -49,6 +50,7 @@ function App() {
                 <Route path="/projects/:id" element={<Protected><ProjectDetailPage /></Protected>} />
                 <Route path="/pipeline" element={<Protected><PipelinePage /></Protected>} />
                 <Route path="/change-requests" element={<Protected><ChangeRequestsPage /></Protected>} />
+                <Route path="/wbs-budget" element={<Protected><WBSBudgetPage /></Protected>} />
                 <Route path="/customers" element={<Protected><MasterPage entityKey="customers" /></Protected>} />
                 <Route path="/customers/:id" element={<Protected><CustomerProfilePage /></Protected>} />
                 <Route path="/suppliers" element={<Protected><MasterPage entityKey="suppliers" /></Protected>} />

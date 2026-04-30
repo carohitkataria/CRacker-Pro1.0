@@ -6,7 +6,7 @@ import { useTheme } from "@/lib/theme";
 import {
   ChartLineUp, FolderSimple, Database, UploadSimple, GavelIcon,
   ShieldCheck, ClockCounterClockwise, SignOut, Wallet, UsersThree, Truck, UserCircle,
-  Palette, Gear, FunnelSimple, ArrowsClockwise, CaretLeft, CaretRight,
+  Palette, Gear, FunnelSimple, ArrowsClockwise, CaretLeft, CaretRight, Stack,
 } from "@phosphor-icons/react";
 
 const NAV = [
@@ -15,16 +15,17 @@ const NAV = [
   { to: "/projects", label: "Projects", icon: FolderSimple, testid: "sidebar-projects" },
   { to: "/change-requests", label: "Change Requests", icon: ArrowsClockwise, testid: "sidebar-change-requests" },
   { to: "/customers", label: "Customer Profile", icon: UsersThree, testid: "sidebar-customers" },
-  { to: "/suppliers", label: "Suppliers", icon: Truck, testid: "sidebar-suppliers" },
-  { to: "/employees", label: "Employees", icon: UserCircle, testid: "sidebar-employees" },
-  { to: "/uploads", label: "Excel Upload", icon: UploadSimple, testid: "sidebar-uploads" },
-  { to: "/approvals", label: "Approvals", icon: GavelIcon, testid: "sidebar-approvals" },
-  { to: "/audit", label: "Audit Trail", icon: ClockCounterClockwise, testid: "sidebar-audit" },
+  { to: "/wbs-budget", label: "WBS and Budget", icon: Stack, testid: "sidebar-wbs-budget" },
 ];
 
 const ADMIN_NAV = [
-  { to: "/admin/users", label: "User Management", icon: ShieldCheck, testid: "sidebar-admin-users" },
+  { to: "/approvals", label: "Approvals", icon: GavelIcon, testid: "sidebar-approvals", anyRole: true },
+  { to: "/suppliers", label: "Suppliers", icon: Truck, testid: "sidebar-suppliers", anyRole: true },
+  { to: "/employees", label: "Employees", icon: UserCircle, testid: "sidebar-employees", anyRole: true },
+  { to: "/uploads", label: "Excel Upload", icon: UploadSimple, testid: "sidebar-uploads", anyRole: true },
+  { to: "/audit", label: "Audit Trail", icon: ClockCounterClockwise, testid: "sidebar-audit", anyRole: true },
   { to: "/admin/approval-matrix", label: "Approval Matrix", icon: Database, testid: "sidebar-approval-matrix" },
+  { to: "/admin/users", label: "User Management", icon: ShieldCheck, testid: "sidebar-admin-users" },
   { to: "/admin/settings", label: "Settings", icon: Gear, testid: "sidebar-settings" },
 ];
 
@@ -41,11 +42,12 @@ export default function AppLayout({ children }) {
   }, [collapsed]);
 
   const asideWidth = collapsed ? "w-16" : "w-64";
+  const adminVisible = ADMIN_NAV.filter((n) => n.anyRole || user?.role === "admin");
 
   return (
     <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <aside
-        className={`${asideWidth} flex flex-col transition-all duration-200 relative ${collapsed ? "sidebar-collapsed" : ""}`}
+        className={`${asideWidth} flex flex-col transition-all duration-200 sticky top-0 h-screen self-start ${collapsed ? "sidebar-collapsed" : ""}`}
         style={{ backgroundColor: "var(--sidebar)", color: "var(--sidebar-text)" }}
         data-testid="app-sidebar"
       >
@@ -59,15 +61,15 @@ export default function AppLayout({ children }) {
           {collapsed ? <CaretRight size={12} weight="bold" /> : <CaretLeft size={12} weight="bold" />}
         </button>
 
-        <div className={`${collapsed ? "px-3 py-5" : "px-6 py-6"} border-b`} style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+        <div className={`${collapsed ? "px-3 py-5" : "px-6 py-6"} border-b shrink-0`} style={{ borderColor: "rgba(255,255,255,0.1)" }}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 flex items-center justify-center shrink-0" style={{ background: "var(--gold)" }}>
               <Wallet weight="bold" size={18} className="text-black" />
             </div>
             {!collapsed && (
               <div>
-                <div className="font-display text-lg font-bold tracking-tight">CRacker Pro</div>
-                <div className="text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.5)" }}>Business Finance</div>
+                <div className="font-display text-lg font-bold tracking-tight">WAISL · COLM</div>
+                <div className="text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.5)" }}>Customer Order Lifecycle</div>
               </div>
             )}
           </div>
@@ -81,10 +83,10 @@ export default function AppLayout({ children }) {
               <span className="nav-label">{n.label}</span>
             </NavLink>
           ))}
-          {user?.role === "admin" && (
+          {adminVisible.length > 0 && (
             <>
               <div className="nav-section-label px-4 py-2 mt-4 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Administration</div>
-              {ADMIN_NAV.map((n) => (
+              {adminVisible.map((n) => (
                 <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={n.testid}>
                   <n.icon size={18} weight="duotone" />
                   <span className="nav-label">{n.label}</span>
@@ -94,7 +96,7 @@ export default function AppLayout({ children }) {
           )}
         </nav>
 
-        <div className={`${collapsed ? "px-2 py-3" : "px-4 py-4"} border-t`} style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+        <div className={`${collapsed ? "px-2 py-3" : "px-4 py-4"} border-t shrink-0`} style={{ borderColor: "rgba(255,255,255,0.1)" }}>
           {collapsed ? (
             <button
               className="btn-ghost w-full flex items-center justify-center"
@@ -121,7 +123,7 @@ export default function AppLayout({ children }) {
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-16 px-8 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between" data-testid="app-topbar">
-          <div className="text-xs text-[var(--muted)] tracking-overline">Project Commercial Lifecycle</div>
+          <div className="text-xs text-[var(--muted)] tracking-overline">WAISL · Customer Order Lifecycle Management</div>
 
           <div className="flex items-center gap-3">
             {/* Theme picker */}

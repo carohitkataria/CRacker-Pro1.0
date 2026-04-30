@@ -120,10 +120,10 @@ export default function ProjectDetailPage() {
       {/* Quick stats */}
       <div className="px-8 py-5 grid grid-cols-2 md:grid-cols-5 gap-3">
         <Stat label="PO Value" value={formatCurrency(project.po_value, mode, inrPerUsd)} />
-        <Stat label="Revenue Plan" value={formatCurrency(project.revenue_total, mode, inrPerUsd)} onClick={() => setTab("Revenue")} testid="stat-revenue" />
-        <Stat label="Cost Plan" value={formatCurrency(project.cost_total, mode, inrPerUsd)} onClick={() => setTab("Cost")} testid="stat-cost" />
+        <Stat label="Revenue" value={formatCurrency(project.revenue_total, mode, inrPerUsd)} onClick={() => setTab("Revenue")} testid="stat-revenue" />
+        <Stat label="Cost" value={formatCurrency(project.cost_total, mode, inrPerUsd)} onClick={() => setTab("Cost")} testid="stat-cost" />
         <Stat label="Margin" value={formatCurrency(project.margin_total, mode, inrPerUsd)} accent />
-        <Stat label="Margin %" value={`${(project.margin_pct || 0).toFixed(1)}%`} accent={project.margin_pct >= 15} danger={project.margin_pct < 15} />
+        <Stat label="Deal Margin %" value={`${(project.margin_pct || 0).toFixed(1)}%`} accent={project.margin_pct >= 15} danger={project.margin_pct < 15} />
       </div>
 
       {/* Tabs */}
@@ -182,6 +182,12 @@ function Stat({ label, value, accent, danger, onClick, testid }) {
 }
 
 function Overview({ project }) {
+  const [pipeline, setPipeline] = React.useState(null);
+  React.useEffect(() => {
+    if (!project.pipeline_id) return;
+    api.get(`/pipeline/${project.pipeline_id}`).then((r) => setPipeline(r.data)).catch(() => {});
+  }, [project.pipeline_id]);
+
   const fields = [
     ["Customer", project.customer_name],
     ["Customer PO Number", project.customer_po_number],
@@ -197,25 +203,78 @@ function Overview({ project }) {
     ["Project Grouping", project.project_grouping],
     ["Location", project.location],
     ["Ownership Email", project.ownership_email],
+    ["Finance SPOC", project.finance_spoc_email],
     ["Approval Status", <StatusBadge key="a" status={project.approval_status} />],
     ["Created By", project.created_by],
     ["Updated At", formatDateTime(project.updated_at)],
   ];
+  const mgmtFlags = [
+    ["MD Review Required", project.md_review_required],
+    ["CFO Review Required", project.cfo_review_required],
+    ["CEO Visibility", project.ceo_visibility],
+    ["Strategic Deal", project.strategic_deal],
+  ].filter(([_, v]) => !!v);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
-      {fields.map(([k, v]) => (
-        <div key={k} className="flex justify-between border-b border-[var(--border)] pb-2">
-          <span className="text-xs text-[var(--muted)] tracking-overline">{k}</span>
-          <span className="text-sm font-medium text-[var(--text)]">{v || "—"}</span>
-        </div>
-      ))}
-      {(project.description || project.baseline_remarks || project.finance_remarks) && (
-        <div className="md:col-span-2 mt-4 grid md:grid-cols-3 gap-4">
-          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Description</div><div className="text-sm">{project.description || "—"}</div></div>
-          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Baseline Remarks</div><div className="text-sm">{project.baseline_remarks || "—"}</div></div>
-          <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Finance Remarks</div><div className="text-sm">{project.finance_remarks || "—"}</div></div>
+    <div className="space-y-6">
+      {pipeline && (
+        <div className="tile p-5" data-testid="overview-pipeline-origin">
+          <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Pipeline Origin</div>
+          <div className="font-display text-lg font-bold">{pipeline.opportunity_title}</div>
+          <div className="text-[11px] text-[var(--muted)] font-mono">{pipeline.opportunity_id}</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 text-xs">
+            <Info k="Solution Line" v={pipeline.solution_line} />
+            <Info k="Opportunity Type" v={pipeline.opportunity_type} />
+            <Info k="Lead Source" v={pipeline.lead_source} />
+            <Info k="BD Owner" v={pipeline.bd_owner} />
+            <Info k="Decision Maker" v={pipeline.decision_maker_name} />
+            <Info k="Customer Budget Approved" v={pipeline.customer_budget_approved ? "Yes" : "No"} />
+            <Info k="Final Commercial Value" v={(pipeline.final_commercial_value || 0).toLocaleString()} />
+            <Info k="Forecast Category" v={pipeline.forecast_category} />
+            <Info k="Probability %" v={`${(pipeline.probability_pct || 0).toFixed(0)}%`} />
+            <Info k="Expected Closure" v={pipeline.expected_closure_date} />
+            <Info k="Won Against" v={pipeline.won_against_competitor} />
+            <Info k="Customer PO" v={pipeline.customer_po_number} />
+          </div>
+          <a href="/pipeline" className="text-[11px] text-[var(--gold)] underline mt-3 inline-block">View pipeline →</a>
         </div>
       )}
+
+      {mgmtFlags.length > 0 && (
+        <div className="tile p-4" data-testid="overview-mgmt-flags">
+          <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Management Review Flags</div>
+          <div className="flex flex-wrap gap-2">
+            {mgmtFlags.map(([k]) => (
+              <span key={k} className="badge flag-low-margin">{k}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
+        {fields.map(([k, v]) => (
+          <div key={k} className="flex justify-between border-b border-[var(--border)] pb-2">
+            <span className="text-xs text-[var(--muted)] tracking-overline">{k}</span>
+            <span className="text-sm font-medium text-[var(--text)]">{v || "—"}</span>
+          </div>
+        ))}
+        {(project.description || project.baseline_remarks || project.finance_remarks) && (
+          <div className="md:col-span-2 mt-4 grid md:grid-cols-3 gap-4">
+            <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Description</div><div className="text-sm">{project.description || "—"}</div></div>
+            <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Baseline Remarks</div><div className="text-sm">{project.baseline_remarks || "—"}</div></div>
+            <div className="tile p-4"><div className="text-[10px] tracking-overline text-[var(--muted)] mb-1">Finance Remarks</div><div className="text-sm">{project.finance_remarks || "—"}</div></div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Info({ k, v }) {
+  return (
+    <div>
+      <div className="text-[9px] tracking-overline text-[var(--muted)]">{k}</div>
+      <div className="font-medium text-[var(--text)]">{v || "—"}</div>
     </div>
   );
 }

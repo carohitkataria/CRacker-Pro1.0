@@ -288,6 +288,21 @@ async def on_startup():
             })
         await db.pipelines.insert_many(docs)
 
+    # Backfill opportunity_id for older pipeline rows + remove empty / orphan entries
+    async for row in db.pipelines.find({"$or": [
+        {"opportunity_id": {"$exists": False}},
+        {"opportunity_id": None},
+        {"opportunity_title": {"$in": ["", None]}},
+    ]}):
+        if not (row.get("opportunity_title") or "").strip():
+            await db.pipelines.delete_one({"id": row["id"]})
+            continue
+        if not row.get("opportunity_id"):
+            seq = await db.pipelines.count_documents({"opportunity_id": {"$exists": True, "$ne": None}}) + 1
+            year = datetime.now(timezone.utc).year
+            opp_id = f"OPP-{year}-{seq:06d}"
+            await db.pipelines.update_one({"id": row["id"]}, {"$set": {"opportunity_id": opp_id}})
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
@@ -884,12 +899,43 @@ async def action_request(req_id: str, payload: ApprovalActionIn, user: dict = De
 # DASHBOARD
 # ============================================================
 @api.get("/dashboard/summary")
-async def dashboard_summary(user: dict = Depends(get_current_user)):
-    projects = await db.projects.find({}, {"_id": 0}).to_list(5000)
+async def dashboard_summary(
+    section: Optional[str] = Query(None, description="projects | change_requests | pipeline (defaults to all)"),
+    customer_ids: Optional[str] = Query(None, description="Comma-separated customer ids"),
+    project_ids: Optional[str] = Query(None, description="Comma-separated project ids"),
+    business_category: Optional[str] = Query(None, description="GMR | Non-GMR"),
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    user: dict = Depends(get_current_user),
+):
+    cust_filter = [c for c in (customer_ids or "").split(",") if c]
+    proj_filter = [p for p in (project_ids or "").split(",") if p]
+
+    def _project_matches(p: dict) -> bool:
+        if cust_filter and p.get("customer_id") not in cust_filter:
+            return False
+        if proj_filter and p["id"] not in proj_filter:
+            return False
+        if business_category and (p.get("business_category") or "Non-GMR") != business_category:
+            return False
+        if section in ("projects", "change_requests"):
+            cat = (p.get("category1") or "").strip().lower()
+            is_cr = "change request" in cat or "change order" in cat or "amendment" in cat
+            if section == "change_requests" and not is_cr:
+                return False
+            if section == "projects" and is_cr:
+                return False
+        return True
+
+    all_projects = await db.projects.find({}, {"_id": 0}).to_list(5000)
+    projects = [p for p in all_projects if _project_matches(p)]
+    pids = {p["id"] for p in projects}
+
     stage_summary: Dict[str, Dict[str, float]] = {s: {"count": 0, "value": 0.0, "margin": 0.0} for s in STAGES}
     total_po, total_rev, total_cost = 0.0, 0.0, 0.0
     delayed_projects: List[dict] = []
     low_margin_projects: List[dict] = []
+    delayed_milestones: List[dict] = []
     today = datetime.now(timezone.utc).date()
 
     for p in projects:
@@ -913,6 +959,28 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
                     })
             except Exception:
                 pass
+        # delayed milestones — any unbilled milestone past due date
+        for m in (p.get("milestones") or []):
+            if m.get("is_billed"):
+                continue
+            due = m.get("due_date")
+            if not due:
+                continue
+            try:
+                due_date = datetime.fromisoformat(due).date()
+            except Exception:
+                continue
+            if due_date < today:
+                delayed_milestones.append({
+                    "project_id": p["id"],
+                    "project_name": p["project_name"],
+                    "wbs_element": p.get("wbs_element"),
+                    "customer_name": p.get("customer_name"),
+                    "milestone_name": m.get("milestone_name"),
+                    "due_date": due,
+                    "value": m.get("value") or 0,
+                    "days_overdue": (today - due_date).days,
+                })
         # low margin: margin_pct < 15
         if (p.get("margin_pct") or 0) < 15:
             low_margin_projects.append({
@@ -921,8 +989,15 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
                 "current_stage": st,
             })
 
-    # recognized but unbilled
-    rev_lines = await db.revenue_lines.find({}, {"_id": 0}).to_list(5000)
+    # recognized but unbilled (filter to pids in scope)
+    rev_q: Dict[str, Any] = {}
+    if pids:
+        rev_q["project_id"] = {"$in": list(pids)}
+    rev_lines = await db.revenue_lines.find(rev_q, {"_id": 0}).to_list(5000)
+    if date_from:
+        rev_lines = [r for r in rev_lines if (r.get("recognition_date") or "") >= date_from]
+    if date_to:
+        rev_lines = [r for r in rev_lines if (r.get("recognition_date") or "") <= date_to]
     recognized = sum(r.get("amount", 0) for r in rev_lines)
     billed = sum(r.get("amount", 0) for r in rev_lines if r.get("is_billed"))
     unbilled = recognized - billed
@@ -940,7 +1015,10 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
     top_customers = sorted(cust_agg.values(), key=lambda x: -x["po_value"])[:10]
 
     # vendor exposure (sum of cost lines by supplier_name) — top 10
-    cost_lines = await db.cost_lines.find({}, {"_id": 0}).to_list(5000)
+    cost_q: Dict[str, Any] = {}
+    if pids:
+        cost_q["project_id"] = {"$in": list(pids)}
+    cost_lines = await db.cost_lines.find(cost_q, {"_id": 0}).to_list(5000)
     vendor_agg: Dict[str, float] = {}
     for c in cost_lines:
         sn = c.get("supplier_name") or "Unspecified"
@@ -962,7 +1040,29 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
         rec = sum(r.get("amount", 0) for r in rev_lines if (r.get("recognition_date") or "")[:7] == m)
         monthly.append({"month": m, "billed": b, "recognized": rec})
 
+    # Cascading filter options — based on current filtered scope
+    customer_options: Dict[str, str] = {}
+    for p in projects:
+        if p.get("customer_id"):
+            customer_options[p["customer_id"]] = p.get("customer_name") or "Unknown"
+    project_options = [
+        {"id": p["id"], "name": p.get("project_name") or "?", "wbs_element": p.get("wbs_element"),
+         "customer_id": p.get("customer_id"), "category1": p.get("category1") or ""}
+        for p in projects
+    ]
+
+    delayed_milestones.sort(key=lambda x: -(x["days_overdue"]))
+
     return {
+        "filters_applied": {
+            "section": section, "customer_ids": cust_filter,
+            "project_ids": proj_filter, "business_category": business_category,
+            "date_from": date_from, "date_to": date_to,
+        },
+        "filter_options": {
+            "customers": [{"id": k, "name": v} for k, v in sorted(customer_options.items(), key=lambda x: x[1])],
+            "projects": project_options,
+        },
         "stage_summary": [
             {"stage": s, "count": stage_summary[s]["count"],
              "po_value": stage_summary[s]["value"], "margin": stage_summary[s]["margin"]} for s in STAGES
@@ -977,6 +1077,7 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
         },
         "recognized_unbilled": {"recognized": recognized, "billed": billed, "unbilled": unbilled},
         "delayed_projects": delayed_projects[:50],
+        "delayed_milestones": delayed_milestones[:50],
         "low_margin_projects": low_margin_projects[:50],
         "top_customers": top_customers,
         "vendor_exposure": vendor_exposure,
@@ -1548,6 +1649,11 @@ async def get_pipeline(pid: str, _: dict = Depends(get_current_user)):
 async def create_pipeline(payload: PipelineIn, user: dict = Depends(get_current_user)):
     doc = payload.model_dump()
     doc["id"] = gen_id()
+    # Auto-generate opportunity_id (e.g. OPP-2026-000123)
+    if not doc.get("opportunity_id"):
+        seq = await db.pipelines.count_documents({}) + 1
+        year = datetime.now(timezone.utc).year
+        doc["opportunity_id"] = f"OPP-{year}-{seq:06d}"
     doc["current_stage"] = "Prospecting"
     doc["handoff_status"] = "Not Applicable"
     doc["handoff_project_id"] = None
@@ -1596,12 +1702,12 @@ async def advance_pipeline(pid: str, payload: PipelineStageIn, user: dict = Depe
 @api.post("/pipeline/{pid}/close", response_model=PipelineOut)
 async def close_pipeline(
     pid: str,
-    outcome: str = Query(..., description="Won or Lost"),
-    reason: Optional[str] = Query("", description="Win/Loss reason"),
+    outcome: str = Query(..., description="Won, Lost, or Deferred"),
+    reason: Optional[str] = Query("", description="Win/Loss/Deferred reason"),
     user: dict = Depends(get_current_user),
 ):
-    if outcome not in ("Won", "Lost"):
-        raise HTTPException(400, "outcome must be 'Won' or 'Lost'")
+    if outcome not in ("Won", "Lost", "Deferred"):
+        raise HTTPException(400, "outcome must be 'Won', 'Lost', or 'Deferred'")
     existing = await db.pipelines.find_one({"id": pid})
     if not existing:
         raise HTTPException(404, "Opportunity not found")
@@ -1653,25 +1759,26 @@ async def approve_handoff(
                           user=user, reason=payload.comment or "")
         return await db.pipelines.find_one({"id": pid}, {"_id": 0})
 
-    # Approved → create Project from pipeline
-    po_value = existing.get("negotiated_value") or existing.get("proposal_value") or existing.get("expected_revenue") or 0.0
-    margin_pct = existing.get("estimated_margin_pct") or 0.0
+    # Approved → create Project from pipeline (with category routing & flag copy)
+    po_value = existing.get("final_commercial_value") or existing.get("negotiated_value") or existing.get("proposal_value") or existing.get("expected_revenue") or 0.0
+    margin_pct = existing.get("estimated_margin_pct") or existing.get("expected_gross_margin_pct") or 0.0
     revenue_total = po_value
     cost_total = round(revenue_total * (1 - margin_pct / 100.0), 2) if margin_pct else 0.0
     margin = compute_margin(po_value, revenue_total, cost_total)
+    is_change_request = (existing.get("opportunity_category") or "Project") == "Change Request"
     project_doc = {
         "id": gen_id(),
         "project_name": existing["opportunity_title"],
         "wbs_element": None,
-        "customer_po_number": None,
-        "po_date": None,
-        "start_date": None,
-        "end_date": None,
-        "billing_type": "Monthly",
-        "milestones": [],
+        "customer_po_number": existing.get("customer_po_number"),
+        "po_date": existing.get("contract_signed_date"),
+        "start_date": existing.get("final_revenue_start_date") or existing.get("revenue_start_date"),
+        "end_date": existing.get("final_go_live_date") or existing.get("expected_go_live_date"),
+        "billing_type": "Milestone" if existing.get("billing_frequency") == "Milestone" else "Monthly",
+        "milestones": existing.get("closed_milestones") or [],
         "customer_id": existing.get("customer_id"),
         "customer_name": existing.get("customer_name"),
-        "description": existing.get("solution_scope") or "",
+        "description": existing.get("solution_scope") or existing.get("business_need") or "",
         "currency": existing.get("currency", "INR"),
         "po_value": po_value,
         "revenue_total": revenue_total,
@@ -1680,14 +1787,22 @@ async def approve_handoff(
         "country": "India",
         "pnl_location": None, "pnl_region": None,
         "airport_adjacency": None, "project_grouping": None,
-        "location": None, "category1": None, "category2": None,
+        "location": None,
+        "category1": "Change Request" if is_change_request else "Project",
+        "category2": existing.get("solution_line"),
         "business_category": existing.get("business_category") or "Non-GMR",
         "retro_pnl_tagging": None,
         "ownership_email": existing.get("bd_owner"),
         "stakeholders": existing.get("stakeholders") or [],
-        "baseline_remarks": f"Auto-created from pipeline opportunity {existing['id']}",
+        "baseline_remarks": f"Auto-created from pipeline opportunity {existing.get('opportunity_id') or existing['id']}",
         "finance_remarks": payload.comment or "",
-        "current_stage": "Pipeline",
+        "md_review_required": bool(existing.get("md_review_required")),
+        "cfo_review_required": bool(existing.get("cfo_review_required")),
+        "ceo_visibility": bool(existing.get("ceo_visibility")),
+        "strategic_deal": bool(existing.get("strategic_deal")),
+        "finance_spoc_email": existing.get("finance_contact"),
+        "pipeline_id": existing["id"],
+        "current_stage": "Deal P&L" if not is_change_request else "Deal P&L",
         "approval_status": "Not Required",
         "margin_total": margin["margin_total"],
         "margin_pct": margin["margin_pct"],

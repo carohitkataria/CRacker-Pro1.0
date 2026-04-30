@@ -21,7 +21,7 @@ function stageChipClass(stage) {
 }
 
 function outcomeChipClass(outcome) {
-  return outcome === "Won" ? "pipe-won" : outcome === "Lost" ? "pipe-lost" : "badge-neutral";
+  return outcome === "Won" ? "pipe-won" : outcome === "Lost" ? "pipe-lost" : outcome === "Deferred" ? "badge-pending" : "badge-neutral";
 }
 
 function handoffChipClass(status) {
@@ -55,9 +55,20 @@ export default function PipelinePage() {
   const [editing, setEditing] = useState(null);
   const [closing, setClosing] = useState(null);
   const [approving, setApproving] = useState(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [err, setErr] = useState("");
 
   const canApprove = user && (user.role === "finance" || user.role === "admin");
+
+  const matchesDate = (r) => {
+    const d = (r.updated_at || r.created_at || "").slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  };
+
+  const filteredRows = rows.filter(matchesDate);
 
   const load = async () => {
     const params = {};
@@ -163,6 +174,18 @@ export default function PipelinePage() {
           <button className="btn-secondary" onClick={load} data-testid="pipeline-search-btn">Search</button>
         </div>
 
+        {/* Date range filter */}
+        <div className="tile p-3 flex flex-wrap items-center gap-3" data-testid="pipeline-date-filter">
+          <div className="text-[10px] tracking-overline text-[var(--muted)]">Date Range</div>
+          <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="pipeline-date-from" />
+          <span className="text-xs text-[var(--muted)]">to</span>
+          <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="pipeline-date-to" />
+          {(dateFrom || dateTo) && (
+            <button className="btn-ghost text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }} data-testid="pipeline-date-clear">Clear</button>
+          )}
+          <span className="ml-auto text-[11px] text-[var(--muted)]">{filteredRows.length} of {rows.length} shown</span>
+        </div>
+
         {err && <div className="text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] p-2 border border-[var(--danger)]">{err}</div>}
 
         {/* Table */}
@@ -182,17 +205,25 @@ export default function PipelinePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {filteredRows.map((r) => (
                 <tr key={r.id} data-testid={`pipeline-row-${r.id}`}>
                   <td>
                     <div className="font-medium text-[var(--text)]">{r.opportunity_title}</div>
-                    <div className="text-[11px] text-[var(--muted)]">{r.bd_owner || "—"}</div>
+                    <div className="text-[11px] text-[var(--muted)]">
+                      {r.opportunity_id && <span className="font-mono mr-2">{r.opportunity_id}</span>}
+                      {r.bd_owner || ""}
+                    </div>
                   </td>
                   <td>{r.customer_name || "—"}</td>
                   <td><span className={`badge ${stageChipClass(r.current_stage)}`} data-testid={`pipeline-stage-${r.id}`}>{r.current_stage}</span></td>
-                  <td className="space-x-1">
+                  <td className="space-x-1 space-y-1">
                     <span className={`badge ${mgmtFlagClass(r.business_category)}`}>{r.business_category}</span>
                     <span className={`badge ${priorityFlagClass(r.priority)}`}>{r.priority}</span>
+                    {r.strategic_deal && <span className="badge flag-high" title="Strategic Deal">STRATEGIC</span>}
+                    {r.md_review_required && <span className="badge flag-low-margin" title="MD Review">MD</span>}
+                    {r.cfo_review_required && <span className="badge flag-low-margin" title="CFO Review">CFO</span>}
+                    {r.ceo_visibility && <span className="badge flag-low-margin" title="CEO Visibility">CEO</span>}
+                    {r.opportunity_category === "Change Request" && <span className="badge badge-neutral" title="Change Request">CR</span>}
                   </td>
                   <td className="num">{formatCurrency(r.expected_revenue, mode, inrPerUsd)}</td>
                   <td className="num">{formatCurrency(r.negotiated_value || r.proposal_value, mode, inrPerUsd)}</td>
@@ -212,7 +243,13 @@ export default function PipelinePage() {
                         </button>
                       )}
                       {r.handoff_status === "Approved" && r.handoff_project_id && (
-                        <a href={`/projects/${r.handoff_project_id}`} className="text-[10px] text-[var(--gold)] underline" data-testid={`handoff-project-${r.id}`}>view project →</a>
+                        <a
+                          href={r.opportunity_category === "Change Request" ? `/change-requests` : `/projects/${r.handoff_project_id}`}
+                          className="text-[10px] text-[var(--gold)] underline"
+                          data-testid={`handoff-project-${r.id}`}
+                        >
+                          {r.opportunity_category === "Change Request" ? "view CR →" : "view project →"}
+                        </a>
                       )}
                     </div>
                   </td>
@@ -232,7 +269,7 @@ export default function PipelinePage() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && (
+              {filteredRows.length === 0 && (
                 <tr><td colSpan={9} className="text-center py-12 text-[var(--muted)]">No opportunities yet — click <span className="text-[var(--gold)] font-semibold">New Opportunity</span></td></tr>
               )}
             </tbody>
@@ -309,6 +346,7 @@ function CloseDealModal({ opportunity, onClose, onClosed, onError }) {
             <select className="input" value={outcome} onChange={(e) => setOutcome(e.target.value)} data-testid="close-outcome">
               <option value="Won">Won</option>
               <option value="Lost">Lost</option>
+              <option value="Deferred">Deferred / Dropped</option>
             </select>
           </div>
           <div>

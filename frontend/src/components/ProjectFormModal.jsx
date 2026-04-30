@@ -12,6 +12,8 @@ const empty = {
   business_category: "Non-GMR", location: "", category1: "",
   ownership_email: "", baseline_remarks: "",
   milestones: [],
+  md_review_required: false, cfo_review_required: false,
+  ceo_visibility: false, strategic_deal: false, finance_spoc_email: "",
 };
 
 export default function ProjectFormModal({ project, customers: initialCustomers, onClose, onSaved }) {
@@ -346,6 +348,31 @@ export default function ProjectFormModal({ project, customers: initialCustomers,
 
             <Field label="Description" full><textarea className="input" rows={2} value={form.description || ""} onChange={(e) => set("description", e.target.value)} /></Field>
             <Field label="Baseline Remarks" full><textarea className="input" rows={2} value={form.baseline_remarks || ""} onChange={(e) => set("baseline_remarks", e.target.value)} /></Field>
+
+            <Field label="Finance SPOC Email"><input className="input" value={form.finance_spoc_email || ""} onChange={(e) => set("finance_spoc_email", e.target.value)} data-testid="form-finance-spoc" /></Field>
+            <Field label="" full>
+              <div className="border border-[var(--border)] p-3">
+                <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Management Review Flags</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    ["md_review_required", "MD Review Required"],
+                    ["cfo_review_required", "CFO Review Required"],
+                    ["ceo_visibility", "CEO Visibility"],
+                    ["strategic_deal", "Strategic Deal"],
+                  ].map(([k, lbl]) => (
+                    <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!form[k]}
+                        onChange={(e) => set(k, e.target.checked)}
+                        data-testid={`form-flag-${k}`}
+                      />
+                      {lbl}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </Field>
           </div>
 
           {/* Milestones editor */}

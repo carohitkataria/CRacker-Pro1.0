@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import api from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import { useCurrency } from "@/lib/currency";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpRight, TrendUp, Warning, Receipt, Buildings, Truck } from "@phosphor-icons/react";
+import { ArrowUpRight, TrendUp, Warning, Receipt, Buildings, Truck, FunnelSimple } from "@phosphor-icons/react";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
   LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell,
@@ -37,14 +37,51 @@ function KpiTile({ label, value, sub, icon: Icon, onClick, accent, testid }) {
   );
 }
 
+const SECTIONS = [
+  { key: "", label: "All" },
+  { key: "projects", label: "Projects" },
+  { key: "change_requests", label: "Change Requests" },
+];
+
+const CHART_PALETTE = [
+  "#E07A3C", "#FFC000", "#7BB661", "#7B3F00", "#5C2B84",
+  "#8B9A2B", "#D9A45B", "#3CA67A", "#C46A3C", "#3D8B7A",
+];
+const STAGE_COLORS = ["#E07A3C", "#FFC000", "#7BB661", "#5C2B84", "#7B3F00"];
+
 export default function DashboardPage() {
   const { mode, inrPerUsd } = useCurrency();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
 
-  useEffect(() => {
-    api.get("/dashboard/summary").then((r) => setData(r.data)).catch(() => {});
-  }, []);
+  // Filters
+  const [section, setSection] = useState("");
+  const [customerIds, setCustomerIds] = useState([]);
+  const [projectIds, setProjectIds] = useState([]);
+  const [businessCategory, setBusinessCategory] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const fetchData = () => {
+    const params = {};
+    if (section) params.section = section;
+    if (customerIds.length) params.customer_ids = customerIds.join(",");
+    if (projectIds.length) params.project_ids = projectIds.join(",");
+    if (businessCategory) params.business_category = businessCategory;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    api.get("/dashboard/summary", { params }).then((r) => setData(r.data)).catch(() => {});
+  };
+
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [section, customerIds.join(","), projectIds.join(","), businessCategory, dateFrom, dateTo]);
+
+  const filterOptions = data?.filter_options || { customers: [], projects: [] };
+
+  // Cascading: when filters applied, only show available options
+  const availableProjects = useMemo(() => {
+    if (!customerIds.length) return filterOptions.projects;
+    return filterOptions.projects.filter((p) => customerIds.includes(p.customer_id));
+  }, [filterOptions.projects, customerIds]);
 
   if (!data) {
     return (
@@ -58,39 +95,90 @@ export default function DashboardPage() {
   }
 
   const { totals, stage_summary, recognized_unbilled, top_customers, vendor_exposure, monthly_billing,
-    delayed_projects, low_margin_projects, approvals_pending } = data;
+    delayed_milestones = [], low_margin_projects, approvals_pending } = data;
 
   const stageChart = stage_summary.map((s) => ({ name: s.stage, count: s.count, value: s.po_value / 1e7 }));
   const monthChart = monthly_billing.map((m) => ({
     month: m.month, billed: m.billed / 1e7, recognized: m.recognized / 1e7,
   }));
-  // Vibrant minimal palette (inspired by reference) — works across themes
-  const CHART_PALETTE = [
-    "#E07A3C", // orange
-    "#FFC000", // gold
-    "#7BB661", // green
-    "#7B3F00", // brown
-    "#5C2B84", // royal purple
-    "#8B9A2B", // olive
-    "#D9A45B", // tan
-    "#3CA67A", // teal-green
-    "#C46A3C", // terracotta
-    "#3D8B7A", // dark teal
-  ];
-  const PIE_COLORS = CHART_PALETTE;
-  const STAGE_COLORS = ["#E07A3C", "#FFC000", "#7BB661", "#5C2B84", "#7B3F00"];
   const totalVendor = (vendor_exposure || []).reduce((s, v) => s + (v.amount || 0), 0) || 1;
+
+  const clearAll = () => {
+    setSection(""); setCustomerIds([]); setProjectIds([]);
+    setBusinessCategory(""); setDateFrom(""); setDateTo("");
+  };
 
   return (
     <div data-testid="dashboard-page">
       <PageHeader
         title="Finance Dashboard"
-        subtitle="Live overview of the project commercial lifecycle"
+        subtitle="Live overview of the customer order lifecycle"
         breadcrumb="HOME · DASHBOARD"
         testid="dashboard-header"
       />
 
       <div className="px-8 py-6 space-y-6">
+        {/* Cascading Filters */}
+        <div className="tile p-4" data-testid="dashboard-filters">
+          <div className="flex items-center gap-2 mb-3">
+            <FunnelSimple size={14} className="text-[var(--muted)]" />
+            <div className="text-[10px] tracking-overline text-[var(--muted)]">Filters</div>
+            <button className="ml-auto btn-ghost text-xs" onClick={clearAll} data-testid="dashboard-filter-clear">Clear all</button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* Section */}
+            <div>
+              <div className="text-[9px] tracking-overline text-[var(--muted)] mb-1">Section</div>
+              <select className="input" value={section} onChange={(e) => { setSection(e.target.value); setProjectIds([]); }} data-testid="filter-section">
+                {SECTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            {/* Customer multi-select */}
+            <div>
+              <div className="text-[9px] tracking-overline text-[var(--muted)] mb-1">Customer (multi)</div>
+              <MultiSelect
+                value={customerIds}
+                options={filterOptions.customers.map((c) => ({ value: c.id, label: c.name }))}
+                onChange={(v) => { setCustomerIds(v); setProjectIds([]); }}
+                placeholder="Any customer"
+                testid="filter-customers"
+              />
+            </div>
+            {/* Project / WBS multi-select */}
+            <div>
+              <div className="text-[9px] tracking-overline text-[var(--muted)] mb-1">Project / WBS (multi)</div>
+              <MultiSelect
+                value={projectIds}
+                options={availableProjects.map((p) => ({
+                  value: p.id,
+                  label: p.wbs_element ? `${p.name} · ${p.wbs_element}` : p.name,
+                }))}
+                onChange={setProjectIds}
+                placeholder="Any project"
+                testid="filter-projects"
+              />
+            </div>
+            {/* Business category */}
+            <div>
+              <div className="text-[9px] tracking-overline text-[var(--muted)] mb-1">GMR / Non-GMR</div>
+              <select className="input" value={businessCategory} onChange={(e) => setBusinessCategory(e.target.value)} data-testid="filter-business-category">
+                <option value="">Both</option>
+                <option value="GMR">GMR</option>
+                <option value="Non-GMR">Non-GMR</option>
+              </select>
+            </div>
+            {/* Date range */}
+            <div>
+              <div className="text-[9px] tracking-overline text-[var(--muted)] mb-1">Recognition Date Range</div>
+              <div className="flex items-center gap-2">
+                <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="filter-date-from" />
+                <span className="text-[10px] text-[var(--muted)]">to</span>
+                <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="filter-date-to" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* KPI ROW */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiTile
@@ -143,11 +231,11 @@ export default function DashboardPage() {
             testid="kpi-unbilled"
           />
           <KpiTile
-            label="Delayed Projects"
-            value={formatNumber(delayed_projects.length)}
+            label="Delayed Milestones"
+            value={formatNumber(delayed_milestones.length)}
             sub={`${low_margin_projects.length} low-margin alerts`}
             icon={Warning}
-            onClick={() => navigate("/projects")}
+            onClick={() => { /* scroll to delayed milestones */ }}
             testid="kpi-delayed"
           />
         </div>
@@ -244,7 +332,7 @@ export default function DashboardPage() {
                     labelLine={false}
                     fontSize={11}
                   >
-                    {vendor_exposure.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    {vendor_exposure.map((_, i) => <Cell key={i} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />)}
                   </Pie>
                   <Tooltip
                     formatter={(v, n) => [formatCurrency(v, mode, inrPerUsd), n]}
@@ -258,7 +346,7 @@ export default function DashboardPage() {
                   return (
                     <div key={v.supplier_name} className="flex items-center justify-between text-xs gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: CHART_PALETTE[i % CHART_PALETTE.length] }} />
                         <span className="truncate">{v.supplier_name}</span>
                       </div>
                       <span className="font-mono text-[var(--muted)]">{pct.toFixed(0)}%</span>
@@ -271,31 +359,33 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Delayed + Low margin */}
+        {/* Delayed Milestones (replaces Delayed Projects) + Low margin */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="tile p-5" data-testid="delayed-projects-tile">
+          <div className="tile p-5" data-testid="delayed-milestones-tile">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-[10px] tracking-overline text-[var(--muted)]">Delayed Projects</div>
-                <div className="font-display text-lg font-bold">Past End Date · Not Closed</div>
+                <div className="text-[10px] tracking-overline text-[var(--muted)]">Delayed Milestones</div>
+                <div className="font-display text-lg font-bold">Past due · Not yet billed</div>
               </div>
             </div>
             <table className="tbl">
-              <thead><tr><th>Project</th><th>Flag</th><th>End Date</th><th className="num">PO</th></tr></thead>
+              <thead><tr><th>Milestone</th><th>Project</th><th>Flag</th><th>Due</th><th className="num">Value</th><th className="num">Days</th></tr></thead>
               <tbody>
-                {delayed_projects.slice(0, 6).map((p) => (
-                  <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)}>
-                    <td className="text-[var(--text)]">
-                      <div>{p.project_name}</div>
-                      <div className="text-[11px] text-[var(--muted)]">{p.customer_name || "—"}</div>
+                {delayed_milestones.slice(0, 8).map((m, i) => (
+                  <tr key={i} className="cursor-pointer" onClick={() => navigate(`/projects/${m.project_id}`)} data-testid={`delayed-milestone-${i}`}>
+                    <td className="font-medium">{m.milestone_name || "—"}</td>
+                    <td>
+                      <div className="text-[var(--text)]">{m.project_name}</div>
+                      <div className="text-[11px] text-[var(--muted)]">{m.customer_name || ""}</div>
                     </td>
                     <td><span className="badge flag-delayed">Delayed</span></td>
-                    <td className="text-[var(--danger)]">{p.end_date}</td>
-                    <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
+                    <td className="text-[var(--danger)]">{m.due_date}</td>
+                    <td className="num">{formatCurrency(m.value, mode, inrPerUsd)}</td>
+                    <td className="num text-[var(--danger)]">{m.days_overdue}d</td>
                   </tr>
                 ))}
-                {delayed_projects.length === 0 && (
-                  <tr><td colSpan={4} className="text-[var(--muted)] text-center py-6">No delayed projects</td></tr>
+                {delayed_milestones.length === 0 && (
+                  <tr><td colSpan={6} className="text-[var(--muted)] text-center py-6">No delayed milestones</td></tr>
                 )}
               </tbody>
             </table>
@@ -311,7 +401,7 @@ export default function DashboardPage() {
             <table className="tbl">
               <thead><tr><th>Project</th><th>Flag</th><th className="num">Margin %</th><th className="num">PO</th></tr></thead>
               <tbody>
-                {low_margin_projects.slice(0, 6).map((p) => (
+                {low_margin_projects.slice(0, 8).map((p) => (
                   <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)}>
                     <td>
                       <div>{p.project_name}</div>
@@ -330,6 +420,57 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Lightweight multi-select using native checkboxes inside a popover
+function MultiSelect({ value, options, onChange, placeholder, testid }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const filtered = options.filter((o) => !search || o.label.toLowerCase().includes(search.toLowerCase()));
+  const labelText = value.length === 0 ? placeholder : `${value.length} selected`;
+
+  return (
+    <div className="relative" data-testid={testid}>
+      <button type="button" className="input flex items-center justify-between text-left" onClick={() => setOpen((v) => !v)}>
+        <span className="truncate">{labelText}</span>
+        <span className="text-[var(--muted)] text-xs">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-[var(--surface)] border border-[var(--border)] shadow-lg max-h-72 overflow-auto" data-testid={`${testid}-menu`}>
+          <div className="p-2 border-b border-[var(--border)] sticky top-0 bg-[var(--surface)]">
+            <input
+              className="input text-xs"
+              placeholder="Search…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-testid={`${testid}-search`}
+            />
+          </div>
+          {filtered.length === 0 && <div className="p-3 text-xs text-[var(--muted)]">No matches</div>}
+          {filtered.map((o) => {
+            const selected = value.includes(o.value);
+            return (
+              <label key={o.value} className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-[var(--row-hover)]" data-testid={`${testid}-opt-${o.value}`}>
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => {
+                    if (selected) onChange(value.filter((v) => v !== o.value));
+                    else onChange([...value, o.value]);
+                  }}
+                />
+                <span className="truncate">{o.label}</span>
+              </label>
+            );
+          })}
+          <div className="p-2 border-t border-[var(--border)] sticky bottom-0 bg-[var(--surface)] flex justify-between">
+            <button className="btn-ghost text-xs" onClick={() => onChange([])} data-testid={`${testid}-clear`}>Clear</button>
+            <button className="btn-secondary text-xs" onClick={() => setOpen(false)} data-testid={`${testid}-done`}>Done</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

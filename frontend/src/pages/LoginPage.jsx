@@ -51,8 +51,8 @@ export default function LoginPage() {
               <AirplaneTilt weight="fill" size={22} className="text-[#0A1628]" />
             </div>
             <div>
-              <div className="font-display text-xl font-bold tracking-tight">CRacker Pro</div>
-              <div className="text-[10px] tracking-overline text-[#FFD24A]">Business Finance · Aviation</div>
+              <div className="font-display text-xl font-bold tracking-tight">WAISL · COLM</div>
+              <div className="text-[10px] tracking-overline text-[#FFD24A]">Customer Order Lifecycle · Aviation</div>
             </div>
           </div>
           <div>
@@ -68,7 +68,7 @@ export default function LoginPage() {
             </p>
           </div>
           <div className="text-[10px] tracking-overline text-white/40 flex items-center gap-2">
-            <span>© CRacker Pro · Confidential · Authorised access only</span>
+            <span>© WAISL · Customer Order Lifecycle Management · Authorised access only</span>
           </div>
         </div>
       </div>
@@ -83,7 +83,7 @@ export default function LoginPage() {
             Sign in to your workspace
           </div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-[#111110] mb-1">Welcome aboard</h1>
-          <p className="text-sm text-[#5E5E5A] mb-8">Use your CRacker Pro credentials. Passwords are admin-managed.</p>
+          <p className="text-sm text-[#5E5E5A] mb-8">Use your WAISL credentials. Passwords are admin-managed.</p>
 
           <label className="block text-[11px] tracking-overline text-[#5E5E5A] mb-1.5">Email</label>
           <div className="relative mb-4">
@@ -129,7 +129,7 @@ export default function LoginPage() {
           </AirplaneButton>
 
           <div className="mt-6 text-[11px] text-[#5E5E5A] border-t border-[#E5E5E0] pt-4">
-            Forgot your password? Contact your CRacker Pro administrator. <span className="text-[#A67C00]">No OTP-based reset.</span>
+            Forgot your password? Contact your WAISL administrator. <span className="text-[#A67C00]">No OTP-based reset.</span>
           </div>
         </form>
       </div>

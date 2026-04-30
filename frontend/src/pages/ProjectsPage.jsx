@@ -9,12 +9,19 @@ import { STAGES } from "@/components/StageTracker";
 import { Plus, MagnifyingGlass, FunnelSimple, PencilSimple, UploadSimple, DownloadSimple } from "@phosphor-icons/react";
 import ProjectFormModal from "@/components/ProjectFormModal";
 
+const CR_KEYWORDS = /change\s*request|cr\b|change\s*order|co\b|amendment/i;
+function isChangeRequest(p) {
+  return CR_KEYWORDS.test(p.category1 || "");
+}
+
 export default function ProjectsPage() {
   const { mode, inrPerUsd } = useCurrency();
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [stage, setStage] = useState("");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState(null);
   const [customers, setCustomers] = useState([]);
@@ -26,8 +33,16 @@ export default function ProjectsPage() {
     if (stage) params.stage = stage;
     if (search) params.search = search;
     const { data } = await api.get("/projects", { params });
-    setProjects(data);
+    // Projects page excludes Change Requests
+    setProjects(data.filter((p) => !isChangeRequest(p)));
   };
+
+  const filteredProjects = projects.filter((p) => {
+    const d = (p.po_date || p.start_date || "").slice(0, 10);
+    if (dateFrom && d && d < dateFrom) return false;
+    if (dateTo && d && d > dateTo) return false;
+    return true;
+  });
 
   useEffect(() => {
     load();
@@ -128,6 +143,18 @@ export default function ProjectsPage() {
           <button className="btn-secondary" onClick={load} data-testid="apply-search-btn">Search</button>
         </div>
 
+        {/* Date range filter */}
+        <div className="tile p-3 flex flex-wrap items-center gap-3" data-testid="projects-date-filter">
+          <div className="text-[10px] tracking-overline text-[var(--muted)]">Date Range (PO / Start)</div>
+          <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="projects-date-from" />
+          <span className="text-xs text-[var(--muted)]">to</span>
+          <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="projects-date-to" />
+          {(dateFrom || dateTo) && (
+            <button className="btn-ghost text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }} data-testid="projects-date-clear">Clear</button>
+          )}
+          <span className="ml-auto text-[11px] text-[var(--muted)]">{filteredProjects.length} of {projects.length} shown</span>
+        </div>
+
         <div className="tile overflow-hidden">
           <table className="tbl" data-testid="projects-table">
             <thead>
@@ -136,15 +163,18 @@ export default function ProjectsPage() {
                 <th>WBS / PO</th>
                 <th>Customer</th>
                 <th>Stage</th>
+                <th>Flags</th>
                 <th>Approval</th>
                 <th className="num">PO Value</th>
-                <th className="num">Margin %</th>
+                <th className="num">Revenue</th>
+                <th className="num">Cost</th>
+                <th className="num">Deal Margin %</th>
                 <th>End Date</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {projects.map((p) => (
+              {filteredProjects.map((p) => (
                 <tr key={p.id} className="cursor-pointer" onClick={() => navigate(`/projects/${p.id}`)} data-testid={`project-row-${p.id}`}>
                   <td>
                     <div className="font-medium text-[var(--text)]">{p.project_name}</div>
@@ -156,8 +186,17 @@ export default function ProjectsPage() {
                   </td>
                   <td>{p.customer_name || "—"}</td>
                   <td><StatusBadge status={p.current_stage} /></td>
+                  <td className="space-x-1 space-y-1">
+                    {p.business_category && <span className={`badge ${p.business_category === "GMR" ? "flag-gmr" : "flag-non-gmr"}`}>{p.business_category}</span>}
+                    {p.strategic_deal && <span className="badge flag-high" title="Strategic Deal">STRATEGIC</span>}
+                    {p.md_review_required && <span className="badge flag-low-margin" title="MD Review">MD</span>}
+                    {p.cfo_review_required && <span className="badge flag-low-margin" title="CFO Review">CFO</span>}
+                    {p.ceo_visibility && <span className="badge flag-low-margin" title="CEO Visibility">CEO</span>}
+                  </td>
                   <td><StatusBadge status={p.approval_status} /></td>
                   <td className="num">{formatCurrency(p.po_value, mode, inrPerUsd)}</td>
+                  <td className="num">{formatCurrency(p.revenue_total, mode, inrPerUsd)}</td>
+                  <td className="num">{formatCurrency(p.cost_total, mode, inrPerUsd)}</td>
                   <td className={`num ${(p.margin_pct || 0) < 15 ? "text-[var(--danger)]" : ""}`}>{(p.margin_pct || 0).toFixed(1)}%</td>
                   <td>{formatDate(p.end_date)}</td>
                   <td className="text-right">
@@ -172,8 +211,8 @@ export default function ProjectsPage() {
                   </td>
                 </tr>
               ))}
-              {projects.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-12 text-[var(--muted)]">No projects yet</td></tr>
+              {filteredProjects.length === 0 && (
+                <tr><td colSpan={12} className="text-center py-12 text-[var(--muted)]">No projects yet</td></tr>
               )}
             </tbody>
           </table>

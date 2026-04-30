@@ -34,16 +34,32 @@ Undo last SAP import, Aviation visual identity (airplane CTA + tricolor stripe +
 
 ### Phase 4 Iteration 6 — Feb 2026 ✅ — Pipeline + Navigation BRD
 - **Pipeline module (5-stage opportunity funnel)** — `Pipeline` model + `/api/pipeline` CRUD + `/api/pipeline/summary` + `/api/pipeline/{id}/advance` + `/api/pipeline/{id}/close?outcome=Won|Lost` + `/api/pipeline/{id}/approve-handoff`. Stages: Prospecting → Active Discussion → Proposal Submitted → Evaluation/Negotiation → Closed.
-- **Finance Approval Gate** — Closed-Won sets `handoff_status='Pending Finance'`. Finance OR Admin can approve → auto-creates a Project stub (po_value mirrors negotiated_value|proposal_value|expected_revenue, margin mirrors estimated_margin_pct, customer/business_category copied). Reject sets `handoff_status='Rejected'` and does NOT create a Project. Non-finance/admin callers get 403.
+- **Finance Approval Gate** — Closed-Won sets `handoff_status='Pending Finance'`. Finance OR Admin can approve → auto-creates a Project stub.
 - **Tabbed stage-wise wizard** (`PipelineWizardModal`) with progressive disclosure. `*` markers visible on mandatory fields but no validation blocks save.
-- **Collapsible sidebar** (`AppLayout.jsx`) — icons-only mode with hover tooltips; state persisted to `localStorage.cp_sidebar_collapsed`.
-- **Navigation rename + add** — Customers → Customer Profile, new entries for Pipeline + Change Requests.
-- **Dashboard updates** — "Recognized Revenue" → "Revenue"; Top 10 Suppliers (cost spend, up from 5); colored management flag badges (GMR/Non-GMR/Delayed/Low Margin/High/Medium/Low) on Delayed + Low Margin tables.
-- **Document upload requires mandatory `name`** — `POST /api/projects/{pid}/documents?name=<required>`; UI disables Save button until both name + file present; 422 when name missing.
-- **Enriched Customer Profile** — added `industry`, `sector`, `address_billing`, `address_shipping`, `secondary_contact_person`, `secondary_email`, `secondary_phone`, `website`, `account_owner_email` fields. Shown on Customer Profile page + editable via Masters/Customers modal.
-- **Project Form `*` markers** — Project Name, WBS, Customer, Customer PO, PO/Start/End Date, Billing Type, PO/Revenue/Cost Value, Business Category, P&L Location/Region, Location, Ownership Email.
-- Seeded 4 sample pipeline opportunities covering all stages.
-- 16/16 pytest pipeline tests passing (`test_pipeline_iter6.py`). Full frontend e2e verified.
+- **Collapsible sidebar** — icons-only mode with tooltips; persists across reload.
+- **Navigation rename + add** — Customers → Customer Profile, Pipeline + Change Requests.
+- **Dashboard updates** — "Recognized Revenue" → "Revenue"; Top 10 Suppliers; colored management flag badges.
+- **Document upload requires mandatory `name`**.
+- **Enriched Customer Profile** — industry, sector, addresses, secondary contact, website, account owner.
+- **Project Form `*` markers** on mandatory fields.
+- 16/16 pytest pipeline tests passing (`test_pipeline_iter6.py`).
+
+### Phase 4 Iteration 7 — Feb 2026 ✅ — BRD Phase 3 + Phase 4 (full schema + Dashboard rebuild)
+- **Pipeline schema expansion** — full BRD field set per stage (~50+ new fields): `opportunity_id` auto-generated (`OPP-YYYY-NNNNNN`), `opportunity_category` (Project/Change Request), `opportunity_type`, `solution_line`, `business_need`, `nature_of_work`, `lead_source`, `opportunity_source_type`, `strategic_relevance`, `relationship_strength`, decision-maker stakeholders (decision_maker_name/designation, influencer/procurement/finance contacts), `is_rfp_available`, `rfp_number`, `competitor_involved`, `key_competitors`, `customer_budget_approved`, `customer_funding_confirmed`, `last_interaction_date`, `next_action`/`next_action_owner`/`next_followup_date`, `estimated_deal_value`, `probability_pct`, `acv`, `tcv`, `one_time_revenue`, `recurring_revenue`, `expected_gross_margin_pct`, `expected_capex`, `expected_tp_opex`, `expected_resource_cost`, `payment_terms`, `contract_duration`, `revenue_start_date`, `expected_closure_date`, `expected_go_live_date`, `forecast_category`, `commercial_submitted_date`, `deal_qualification_score`, `poc_required`/`poc_status`, technical/legal/procurement/approval-tracking statuses, **Closed sub-status: Won/Lost/Deferred**, `customer_po_number`, `contract_id`, `contract_signed_date`, `billing_frequency`, `final_commercial_value`, `final_revenue_start_date`, `final_go_live_date`, `lessons_learned`, `competitor_won_against_us`, `expected_revisit_date`, `closed_milestones`.
+- **Stage Movement Validation Popup** — soft checklist when advancing stages; "Stay & Fill" or "Proceed Anyway" (does NOT block).
+- **Currency dropdown** — USD default + INR/AED/AUD/CNY/EUR/GBP/JPY/RUB/SAR/SGD.
+- **Management Review Flags** on Pipeline AND Project — `md_review_required`, `cfo_review_required`, `ceo_visibility`, `strategic_deal`. Visible as colored badges on lists, toggles in Project/Pipeline forms.
+- **Closed-Won → Project enriched handoff** — `final_commercial_value` priority for po_value; copies `pipeline_id`, all mgmt flags, `finance_spoc_email = pipeline.finance_contact`, `customer_po_number`, `contract_signed_date`, milestones. **Routes Change Request opportunities to `/change-requests`** by setting `category1='Change Request'`.
+- **Customer Master enrichment** — `parent_group`, `state`, `region`, `domestic_international`, `business_category` (GMR/Non-GMR), `primary_designation`/`primary_department`, `addresses[]` (CustomerAddress), `additional_contacts[]` (CustomerContact).
+- **Project list column renames** — Recog. Revenue → Revenue, Booked Cost → Cost, Business Case Margin% → Deal Margin %; Projects page now excludes Change Requests; date-range filter; Mgmt-flag badges in Flags column.
+- **Project Detail Overview** enriched with Pipeline Origin tile + Mgmt Flags strip when project came from a pipeline.
+- **WBS and Budget** menu item + page (placeholder, lists WBS-element-level budget vs actuals).
+- **Date filter** on Pipeline / Projects / Change Requests pages.
+- **Dashboard rebuild** — cascading filter grid (Section / Customer multi / Project-WBS multi / GMR-NonGMR / Date Range / Clear all). Customer multi-select narrows Project options. New `Delayed Milestones` table replaces "Delayed Projects" (shows project, due date, days overdue, value).
+- **App rename** — "WAISL · COLM" sidebar brand; "WAISL · Customer Order Lifecycle Management" topbar tagline; HTML title + Login page updated.
+- **Sidebar layout** — sticky-positioned (independent scroll); Administration section visible to all roles with admin-only items hidden from non-admin.
+- **Backend backfill** — on_startup auto-fills `opportunity_id` for legacy rows + removes empty pipelines.
+- 14/14 pytest backend tests passing (`test_pipeline_iter7.py`). Frontend cascading filter + WBS + branding + wizard sections + validation popup verified via Playwright.
 
 ## Backlog / Future Phases
 

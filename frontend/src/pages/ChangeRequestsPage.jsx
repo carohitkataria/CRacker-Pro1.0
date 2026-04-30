@@ -23,6 +23,8 @@ export default function ChangeRequestsPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const load = async () => {
     const { data } = await api.get("/projects");
@@ -32,13 +34,18 @@ export default function ChangeRequestsPage() {
   useEffect(() => { load(); }, []);
 
   const filtered = rows.filter((r) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      (r.project_name || "").toLowerCase().includes(s) ||
-      (r.wbs_element || "").toLowerCase().includes(s) ||
-      (r.customer_name || "").toLowerCase().includes(s)
-    );
+    if (search) {
+      const s = search.toLowerCase();
+      if (!(
+        (r.project_name || "").toLowerCase().includes(s) ||
+        (r.wbs_element || "").toLowerCase().includes(s) ||
+        (r.customer_name || "").toLowerCase().includes(s)
+      )) return false;
+    }
+    const d = (r.po_date || r.start_date || "").slice(0, 10);
+    if (dateFrom && d && d < dateFrom) return false;
+    if (dateTo && d && d > dateTo) return false;
+    return true;
   });
 
   return (
@@ -63,6 +70,16 @@ export default function ChangeRequestsPage() {
           <div className="text-[11px] text-[var(--muted)] flex items-center gap-2">
             <ArrowsClockwise size={14} /> {filtered.length} record{filtered.length === 1 ? "" : "s"}
           </div>
+        </div>
+
+        <div className="tile p-3 flex flex-wrap items-center gap-3" data-testid="change-requests-date-filter">
+          <div className="text-[10px] tracking-overline text-[var(--muted)]">Date Range</div>
+          <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="cr-date-from" />
+          <span className="text-xs text-[var(--muted)]">to</span>
+          <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="cr-date-to" />
+          {(dateFrom || dateTo) && (
+            <button className="btn-ghost text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }} data-testid="cr-date-clear">Clear</button>
+          )}
         </div>
 
         <div className="tile overflow-hidden">
