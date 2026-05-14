@@ -44,6 +44,16 @@ Undo last SAP import, Aviation visual identity (airplane CTA + tricolor stripe +
 - **Project Form `*` markers** on mandatory fields.
 - 16/16 pytest pipeline tests passing (`test_pipeline_iter6.py`).
 
+### Phase 4 Iteration 8 — Feb 2026 ✅ — RBAC + Admin section lockdown
+- **Permanent Admin accounts** seeded — `rohit.kataria@waisldigital.com` / `RKataria@121` and `tushar.sukhija@waisldigital.com` / `TSukhija@121`. `is_permanent_admin` flag blocks demote / deactivate / password-reset.
+- **Roles & Permissions** — full CRUD at `/api/roles` (admin-only writes). New `RolesPage.jsx` admin UI: matrix of 6 workspace sections × {View, Edit}; Delete is permanently locked as ADMIN ONLY. Edit toggle auto-enables View; unchecking View auto-disables Edit.
+- **`/api/me/permissions`** — returns is_admin flag + per-section can_view / can_edit / can_delete. Non-admin users always get can_delete=false regardless of role payload.
+- **Workspace routing gated** by `SectionProtected` wrapper on Dashboard / Pipeline / Projects / Change Requests / Customer Profile / WBS-Budget routes. Sidebar items filtered by `can_view`.
+- **Administration section locked to admin role** — Approvals, Suppliers, Employees, Excel Upload, Audit Trail, Approval Matrix, User Management, Roles, Settings now visible only when `user.role==='admin'`.
+- **AdminUsersPage** lets admins assign a workspace role (`role_id`) to non-admin users; permanent admins shown with lock icon and cannot be modified.
+- **Employee master + bulk uploader** match BRD spec; replace-mode preserves permanent admin employees.
+- All 7 RBAC backend test categories pass (deep_testing_backend_v2).
+
 ### Phase 4 Iteration 7 — Feb 2026 ✅ — BRD Phase 3 + Phase 4 (full schema + Dashboard rebuild)
 - **Pipeline schema expansion** — full BRD field set per stage (~50+ new fields): `opportunity_id` auto-generated (`OPP-YYYY-NNNNNN`), `opportunity_category` (Project/Change Request), `opportunity_type`, `solution_line`, `business_need`, `nature_of_work`, `lead_source`, `opportunity_source_type`, `strategic_relevance`, `relationship_strength`, decision-maker stakeholders (decision_maker_name/designation, influencer/procurement/finance contacts), `is_rfp_available`, `rfp_number`, `competitor_involved`, `key_competitors`, `customer_budget_approved`, `customer_funding_confirmed`, `last_interaction_date`, `next_action`/`next_action_owner`/`next_followup_date`, `estimated_deal_value`, `probability_pct`, `acv`, `tcv`, `one_time_revenue`, `recurring_revenue`, `expected_gross_margin_pct`, `expected_capex`, `expected_tp_opex`, `expected_resource_cost`, `payment_terms`, `contract_duration`, `revenue_start_date`, `expected_closure_date`, `expected_go_live_date`, `forecast_category`, `commercial_submitted_date`, `deal_qualification_score`, `poc_required`/`poc_status`, technical/legal/procurement/approval-tracking statuses, **Closed sub-status: Won/Lost/Deferred**, `customer_po_number`, `contract_id`, `contract_signed_date`, `billing_frequency`, `final_commercial_value`, `final_revenue_start_date`, `final_go_live_date`, `lessons_learned`, `competitor_won_against_us`, `expected_revisit_date`, `closed_milestones`.
 - **Stage Movement Validation Popup** — soft checklist when advancing stages; "Stay & Fill" or "Proceed Anyway" (does NOT block).

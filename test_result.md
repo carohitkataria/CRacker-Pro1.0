@@ -290,10 +290,55 @@ frontend:
          preserved). Date strings normalised to YYYY-MM-DD. Existing Documents tab
          remains untouched."
 
+frontend:
+  - task: "RolesPage — admin CRUD for workspace section roles"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/RolesPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Brand-new page. Matrix UI for 6 sections × View/Edit. Delete is locked as ADMIN ONLY. Edit toggle auto-enables View; clearing View auto-clears Edit. System roles read-only. data-testid: roles-page, roles-add-btn, roles-table, role-modal, role-name, role-description, perm-view-<section>, perm-edit-<section>, role-save-btn, role-edit-<id>, role-delete-<id>."
+
+  - task: "Admin sidebar items locked to admin role only"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/AppLayout.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Removed anyRole flag from Approvals, Suppliers, Employees, Excel Upload, Audit Trail. Added Roles link. Workspace nav filtered by permissions.[section].can_view (admin always sees all)."
+
+  - task: "Workspace section routes gated by /me/permissions"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Added SectionProtected wrapper for Dashboard, Pipeline, Projects, Change Requests, Customer Profile, WBS. Non-admin without can_view is redirected to /dashboard. Admin always passes."
+
+  - task: "AdminUsersPage — assign workspace role_id + permanent admin lock"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/AdminUsersPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Loads /api/roles. New 'Workspace Role' select bound to role_id (hidden when system role=admin). Permanent admins shown with lock icon; Deactivate/Reset/Edit disabled. data-testid: user-role-id, user-edit-<id>, user-delete-<id>."
+
 metadata:
   created_by: "main_agent"
-  version: "1.2"
-  test_sequence: 2
+  version: "1.3"
+  test_sequence: 3
   run_ui: false
 
 test_plan:
@@ -548,6 +593,19 @@ frontend:
         (admin@crackerpro.com / Admin@123). For the parse-pdf endpoint, please test
         with any small PDF (a generated multi-line text PDF is fine — it should still
         return 200 with parsed=null-ish fields and `warnings`).
+    -agent: "testing"
+    -message: |
+        ✅ ITERATION 8 BACKEND TESTING COMPLETE — 100% pass on all 7 RBAC test categories:
+        1) Permanent admin login (rohit.kataria & tushar.sukhija) → 200, is_permanent_admin=true
+        2) Permanent admin protection — DELETE, role change, password reset all blocked with 400
+        3) GET /api/me/permissions for admin → is_admin=true, all 6 sections fully permitted
+        4) Roles CRUD — POST/PUT/DELETE work for admin, 403 for non-admin, duplicates 409
+        5) Role assignment + permission enforcement — custom role applied to non-admin user;
+           can_delete forced to false in /me/permissions regardless of payload
+        6) Employee bulk-upload mode=replace preserved permanent admin employees
+        7) Regression: GET /api/projects, /api/pipeline, /api/notifications/status all OK
+        Backend is production-ready for the new RBAC feature set.
+
     -agent: "testing"
     -message: |
         ✅ BACKEND TESTING COMPLETE - ALL 3 FEATURES WORKING PERFECTLY
