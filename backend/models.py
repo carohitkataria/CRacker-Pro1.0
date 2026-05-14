@@ -24,6 +24,7 @@ class UserCreate(BaseModel):
     role: Literal["admin", "finance", "sales", "delivery", "leadership", "approver"]
     location: Optional[str] = None
     reporting_manager_email: Optional[str] = None
+    role_id: Optional[str] = None  # workspace role
 
 
 class UserUpdate(BaseModel):
@@ -32,6 +33,7 @@ class UserUpdate(BaseModel):
     location: Optional[str] = None
     reporting_manager_email: Optional[str] = None
     is_active: Optional[bool] = None
+    role_id: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -42,6 +44,8 @@ class UserOut(BaseModel):
     location: Optional[str] = None
     reporting_manager_email: Optional[str] = None
     is_active: bool = True
+    role_id: Optional[str] = None
+    is_permanent_admin: bool = False
     created_at: str
 
 
@@ -53,6 +57,35 @@ class LoginInput(BaseModel):
 class PasswordChange(BaseModel):
     user_id: str
     new_password: str
+
+
+# ---------- ROLE (workspace section permissions) ----------
+WORKSPACE_SECTIONS = [
+    "dashboard",
+    "pipeline",
+    "projects",
+    "change_requests",
+    "customer_profile",
+    "wbs_budget",
+]
+
+
+class SectionPermission(BaseModel):
+    can_view: bool = False
+    can_edit: bool = False  # Edit includes create + modify (NOT delete)
+
+
+class RoleIn(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    permissions: Dict[str, SectionPermission] = {}
+
+
+class RoleOut(RoleIn):
+    id: str
+    is_system: bool = False  # built-in roles like "admin" can't be deleted
+    created_at: str
+    updated_at: str
 
 
 # ---------- CUSTOMER ----------
@@ -113,13 +146,18 @@ class CustomerOut(CustomerIn):
 
 # ---------- EMPLOYEE ----------
 class EmployeeIn(BaseModel):
-    employee_code: str
-    employee_name: str
+    employee_no: str
     email_id: EmailStr
-    designation: Optional[str] = None
-    department: Optional[str] = None
-    l1_manager_email: Optional[str] = None
+    status: str = "Active"  # Active / Inactive / Exited
+    joining_date: Optional[str] = None  # DD-MM-YYYY or ISO
+    exit_date: Optional[str] = None
+    employment_type: str = "Employee"
+    employee_name: str
+    role_zoho: Optional[str] = None  # Role (as per Zoho)
+    l1_manager: Optional[str] = None  # store as employee_no (or email if user enters that)
     location: Optional[str] = None
+    department: Optional[str] = None
+    sub_department: Optional[str] = None
 
 
 class EmployeeOut(EmployeeIn):

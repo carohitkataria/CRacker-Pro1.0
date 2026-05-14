@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { CurrencyProvider } from "@/lib/currency";
 import { ThemeProvider } from "@/lib/theme";
+import { PermissionsProvider } from "@/lib/permissions";
 import AppLayout from "@/components/AppLayout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -20,6 +21,8 @@ import SettingsPage from "@/pages/SettingsPage";
 import PipelinePage from "@/pages/PipelinePage";
 import ChangeRequestsPage from "@/pages/ChangeRequestsPage";
 import WBSBudgetPage from "@/pages/WBSBudgetPage";
+import EmployeesPage from "@/pages/EmployeesPage";
+import RolesPage from "@/pages/RolesPage";
 
 function Protected({ children, adminOnly }) {
   const { user } = useAuth();
@@ -42,7 +45,8 @@ function App() {
         <AuthProvider>
           <ThemeProvider>
             <CurrencyProvider>
-              <Routes>
+              <PermissionsProvider>
+                <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
@@ -53,16 +57,18 @@ function App() {
                 <Route path="/wbs-budget" element={<Protected><WBSBudgetPage /></Protected>} />
                 <Route path="/customers" element={<Protected><MasterPage entityKey="customers" /></Protected>} />
                 <Route path="/customers/:id" element={<Protected><CustomerProfilePage /></Protected>} />
-                <Route path="/suppliers" element={<Protected><MasterPage entityKey="suppliers" /></Protected>} />
-                <Route path="/employees" element={<Protected><MasterPage entityKey="employees" /></Protected>} />
-                <Route path="/uploads" element={<Protected><UploadsPage /></Protected>} />
-                <Route path="/approvals" element={<Protected><ApprovalsPage /></Protected>} />
-                <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
+                <Route path="/suppliers" element={<Protected adminOnly><MasterPage entityKey="suppliers" /></Protected>} />
+                <Route path="/employees" element={<Protected adminOnly><EmployeesPage /></Protected>} />
+                <Route path="/uploads" element={<Protected adminOnly><UploadsPage /></Protected>} />
+                <Route path="/approvals" element={<Protected adminOnly><ApprovalsPage /></Protected>} />
+                <Route path="/audit" element={<Protected adminOnly><AuditPage /></Protected>} />
                 <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />
                 <Route path="/admin/approval-matrix" element={<Protected adminOnly><ApprovalMatrixPage /></Protected>} />
+                <Route path="/admin/roles" element={<Protected adminOnly><RolesPage /></Protected>} />
                 <Route path="/admin/settings" element={<Protected adminOnly><SettingsPage /></Protected>} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
+              </PermissionsProvider>
             </CurrencyProvider>
           </ThemeProvider>
         </AuthProvider>

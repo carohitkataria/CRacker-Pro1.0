@@ -27,6 +27,7 @@ from models import (
     ApprovalRuleIn, ApprovalRuleOut, ApprovalActionIn, ApprovalRequestOut,
     AuditLogOut, UploadLogOut, gen_id, now_iso, STAGES,
     PipelineIn, PipelineOut, PipelineStageIn, PipelineHandoffAction, PIPELINE_STAGES,
+    RoleIn, RoleOut, WORKSPACE_SECTIONS,
 )
 from services import (
     can_transition, write_audit, compute_margin, find_matching_rule, create_approval_request,
@@ -79,6 +80,15 @@ async def on_startup():
     await db.upload_logs.create_index("uploaded_at")
     await db.login_attempts.create_index("identifier")
     await db.pipelines.create_index("id", unique=True)
+    await db.roles.create_index("id", unique=True)
+    await db.roles.create_index("name", unique=True)
+    await db.employees.create_index("employee_no", unique=False)
+
+    # Migration: drop legacy employee rows that don't have employee_no (old schema)
+    legacy = await db.employees.count_documents({"employee_no": {"$exists": False}})
+    if legacy > 0:
+        await db.employees.delete_many({"employee_no": {"$exists": False}})
+        logger.info("Migrated out %d legacy employee rows", legacy)
 
     # Admin seed
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@crackerpro.com")
@@ -144,15 +154,64 @@ async def on_startup():
 
     if await db.employees.count_documents({}) == 0:
         await db.employees.insert_many([
-            {"id": gen_id(), "employee_code": "E0001", "employee_name": "Rohit Kataria",
-             "email_id": "carohitkataria@gmail.com", "designation": "Finance Manager",
-             "department": "Business Finance", "l1_manager_email": admin_email,
-             "location": "Delhi", "created_at": now_iso()},
-            {"id": gen_id(), "employee_code": "E0002", "employee_name": "Priya Mehta",
-             "email_id": "priya.mehta@crackerpro.com", "designation": "Sales Lead",
-             "department": "Sales", "l1_manager_email": admin_email,
-             "location": "Mumbai", "created_at": now_iso()},
+            {"id": gen_id(), "employee_no": "W0626", "email_id": "KSreedhar.Rao@waisldigital.com",
+             "status": "Active", "joining_date": "02-02-2024", "exit_date": None,
+             "employment_type": "Employee", "employee_name": "K Sreedhar Rao",
+             "role_zoho": "COO", "l1_manager": "W0989", "location": "New Delhi",
+             "department": "Corporate", "sub_department": "L1 Management", "created_at": now_iso()},
+            {"id": gen_id(), "employee_no": "W0683", "email_id": "Rishabh.Gupta@waisldigital.com",
+             "status": "Active", "joining_date": "22-04-2024", "exit_date": None,
+             "employment_type": "Employee", "employee_name": "Rishabh Gupta",
+             "role_zoho": "Manager Corporate Finance", "l1_manager": "W1018", "location": "New Delhi",
+             "department": "Finance", "sub_department": "Business Finance", "created_at": now_iso()},
+            {"id": gen_id(), "employee_no": "W0839", "email_id": "Gurpreet.Singh@waisldigital.com",
+             "status": "Active", "joining_date": "07-01-2025", "exit_date": None,
+             "employment_type": "Employee", "employee_name": "Gurpreet Singh",
+             "role_zoho": "CFO", "l1_manager": "W0989", "location": "New Delhi",
+             "department": "Corporate", "sub_department": "L1 Management", "created_at": now_iso()},
+            {"id": gen_id(), "employee_no": "W1067", "email_id": "Rohit.Kataria@waisldigital.com",
+             "status": "Active", "joining_date": "01-12-2025", "exit_date": None,
+             "employment_type": "Employee", "employee_name": "Rohit Kataria",
+             "role_zoho": "Manager Business Finance", "l1_manager": "W1018", "location": "New Delhi",
+             "department": "Finance", "sub_department": "Business Finance", "created_at": now_iso()},
+            {"id": gen_id(), "employee_no": "W0989", "email_id": "Ankit.Arora@waisldigital.com",
+             "status": "Active", "joining_date": "18-08-2025", "exit_date": None,
+             "employment_type": "Employee", "employee_name": "Ankit Arora",
+             "role_zoho": "CEO", "l1_manager": "W0989", "location": "Dubai",
+             "department": "Corporate", "sub_department": "L1 Management", "created_at": now_iso()},
+            {"id": gen_id(), "employee_no": "W1018", "email_id": "Tushar.Sukhija@waisldigital.com",
+             "status": "Active", "joining_date": "30-09-2025", "exit_date": None,
+             "employment_type": "Employee", "employee_name": "Tushar Sukhija",
+             "role_zoho": "Head Business Finance", "l1_manager": "W0839", "location": "New Delhi",
+             "department": "Finance", "sub_department": "Business Finance", "created_at": now_iso()},
         ])
+
+    # Permanent admin users (cannot be replaced via Excel, cannot be deleted)
+    permanent_admins = [
+        {"email": "rohit.kataria@waisldigital.com", "name": "Rohit Kataria", "password": "RKataria@121"},
+        {"email": "tushar.sukhija@waisldigital.com", "name": "Tushar Sukhija", "password": "TSukhija@121"},
+    ]
+    for pa in permanent_admins:
+        ex = await db.users.find_one({"email": pa["email"]})
+        if not ex:
+            await db.users.insert_one({
+                "id": gen_id(), "email": pa["email"],
+                "password_hash": hash_password(pa["password"]),
+                "name": pa["name"], "role": "admin",
+                "location": "New Delhi", "reporting_manager_email": None,
+                "is_active": True, "is_permanent_admin": True,
+                "role_id": None, "created_at": now_iso(),
+            })
+            logger.info("Seeded permanent admin %s", pa["email"])
+        else:
+            # Ensure they remain permanent admin + correct password
+            await db.users.update_one(
+                {"email": pa["email"]},
+                {"$set": {
+                    "role": "admin", "is_permanent_admin": True, "is_active": True,
+                    "password_hash": hash_password(pa["password"]),
+                }}
+            )
 
     if await db.projects.count_documents({}) == 0:
         cust_list = await db.customers.find({}, {"_id": 0}).to_list(10)
@@ -387,6 +446,7 @@ async def create_user(payload: UserCreate, admin: dict = Depends(require_role("a
         "id": gen_id(), "email": email, "password_hash": hash_password(payload.password),
         "name": payload.name, "role": payload.role, "location": payload.location,
         "reporting_manager_email": payload.reporting_manager_email,
+        "role_id": payload.role_id, "is_permanent_admin": False,
         "is_active": True, "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
@@ -403,6 +463,12 @@ async def update_user(user_id: str, payload: UserUpdate, admin: dict = Depends(r
     if not existing:
         raise HTTPException(404, "User not found")
     updates = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+    # Permanent admins cannot be demoted or deactivated
+    if existing.get("is_permanent_admin"):
+        if "role" in updates and updates["role"] != "admin":
+            raise HTTPException(400, "Permanent admin role cannot be changed")
+        if "is_active" in updates and not updates["is_active"]:
+            raise HTTPException(400, "Permanent admin cannot be deactivated")
     if updates:
         await db.users.update_one({"id": user_id}, {"$set": updates})
         await write_audit(db, entity_type="user", entity_id=user_id, action="update", user=admin,
@@ -416,6 +482,8 @@ async def admin_reset_password(payload: PasswordChange, admin: dict = Depends(re
     existing = await db.users.find_one({"id": payload.user_id})
     if not existing:
         raise HTTPException(404, "User not found")
+    if existing.get("is_permanent_admin"):
+        raise HTTPException(400, "Permanent admin password is managed via environment seed only")
     await db.users.update_one(
         {"id": payload.user_id},
         {"$set": {"password_hash": hash_password(payload.new_password)}},
@@ -428,9 +496,103 @@ async def admin_reset_password(payload: PasswordChange, admin: dict = Depends(re
 async def deactivate_user(user_id: str, admin: dict = Depends(require_role("admin"))):
     if user_id == admin["id"]:
         raise HTTPException(400, "Cannot deactivate yourself")
+    existing = await db.users.find_one({"id": user_id})
+    if existing and existing.get("is_permanent_admin"):
+        raise HTTPException(400, "Permanent admin cannot be deactivated")
     await db.users.update_one({"id": user_id}, {"$set": {"is_active": False}})
     await write_audit(db, entity_type="user", entity_id=user_id, action="deactivate", user=admin)
     return {"ok": True}
+
+
+# ============================================================
+# ROLES (workspace section permissions)
+# ============================================================
+@api.get("/roles", response_model=List[RoleOut])
+async def list_roles(_: dict = Depends(get_current_user)):
+    return await db.roles.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
+
+
+@api.post("/roles", response_model=RoleOut)
+async def create_role(payload: RoleIn, admin: dict = Depends(require_role("admin"))):
+    if await db.roles.find_one({"name": payload.name}):
+        raise HTTPException(409, "Role name already exists")
+    doc = payload.model_dump()
+    doc["id"] = gen_id()
+    doc["is_system"] = False
+    doc["created_at"] = now_iso()
+    doc["updated_at"] = now_iso()
+    # Coerce permissions to dict-of-dicts (Pydantic SectionPermission -> dict)
+    perms: Dict[str, Any] = {}
+    for k, v in (payload.permissions or {}).items():
+        if k in WORKSPACE_SECTIONS:
+            perms[k] = {"can_view": bool(v.can_view), "can_edit": bool(v.can_edit)}
+    doc["permissions"] = perms
+    await db.roles.insert_one(doc)
+    await write_audit(db, entity_type="role", entity_id=doc["id"], action="create", user=admin,
+                      field_changes={"name": payload.name})
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/roles/{rid}", response_model=RoleOut)
+async def update_role(rid: str, payload: RoleIn, admin: dict = Depends(require_role("admin"))):
+    existing = await db.roles.find_one({"id": rid})
+    if not existing:
+        raise HTTPException(404, "Role not found")
+    if existing.get("is_system"):
+        raise HTTPException(400, "System role cannot be edited")
+    updates = payload.model_dump()
+    perms: Dict[str, Any] = {}
+    for k, v in (payload.permissions or {}).items():
+        if k in WORKSPACE_SECTIONS:
+            perms[k] = {"can_view": bool(v.can_view), "can_edit": bool(v.can_edit)}
+    updates["permissions"] = perms
+    updates["updated_at"] = now_iso()
+    await db.roles.update_one({"id": rid}, {"$set": updates})
+    await write_audit(db, entity_type="role", entity_id=rid, action="update", user=admin)
+    return await db.roles.find_one({"id": rid}, {"_id": 0})
+
+
+@api.delete("/roles/{rid}")
+async def delete_role(rid: str, admin: dict = Depends(require_role("admin"))):
+    existing = await db.roles.find_one({"id": rid})
+    if not existing:
+        raise HTTPException(404, "Role not found")
+    if existing.get("is_system"):
+        raise HTTPException(400, "System role cannot be deleted")
+    in_use = await db.users.count_documents({"role_id": rid})
+    if in_use:
+        raise HTTPException(400, f"Role is assigned to {in_use} user(s) — reassign first")
+    await db.roles.delete_one({"id": rid})
+    await write_audit(db, entity_type="role", entity_id=rid, action="delete", user=admin)
+    return {"ok": True}
+
+
+@api.get("/me/permissions")
+async def my_permissions(user: dict = Depends(get_current_user)):
+    """Returns the workspace permissions for the current user."""
+    # Admin role bypasses all checks
+    is_admin = user.get("role") == "admin"
+    all_perms = {s: {"can_view": True, "can_edit": True, "can_delete": is_admin} for s in WORKSPACE_SECTIONS}
+    if is_admin:
+        return {"is_admin": True, "is_permanent_admin": bool(user.get("is_permanent_admin")), "permissions": all_perms}
+
+    perms = {s: {"can_view": False, "can_edit": False, "can_delete": False} for s in WORKSPACE_SECTIONS}
+    role_id = user.get("role_id")
+    if role_id:
+        role = await db.roles.find_one({"id": role_id}, {"_id": 0})
+        if role:
+            for s, p in (role.get("permissions") or {}).items():
+                if s in WORKSPACE_SECTIONS:
+                    perms[s] = {
+                        "can_view": bool(p.get("can_view")),
+                        "can_edit": bool(p.get("can_edit")),
+                        "can_delete": False,  # only admin can delete
+                    }
+    else:
+        # No role assigned → default: can view dashboard only
+        perms["dashboard"] = {"can_view": True, "can_edit": False, "can_delete": False}
+    return {"is_admin": False, "is_permanent_admin": False, "permissions": perms}
 
 
 # ============================================================
@@ -488,7 +650,7 @@ async def list_employees(_: dict = Depends(get_current_user)):
 
 
 @api.post("/employees", response_model=EmployeeOut)
-async def create_employee(payload: EmployeeIn, user: dict = Depends(get_current_user)):
+async def create_employee(payload: EmployeeIn, user: dict = Depends(require_role("admin"))):
     doc = payload.model_dump()
     doc["id"] = gen_id()
     doc["created_at"] = now_iso()
@@ -501,7 +663,7 @@ async def create_employee(payload: EmployeeIn, user: dict = Depends(get_current_
 
 
 @api.put("/employees/{eid}", response_model=EmployeeOut)
-async def update_employee(eid: str, payload: EmployeeIn, user: dict = Depends(get_current_user)):
+async def update_employee(eid: str, payload: EmployeeIn, user: dict = Depends(require_role("admin"))):
     existing = await db.employees.find_one({"id": eid})
     if not existing:
         raise HTTPException(404, "Not found")
@@ -516,6 +678,137 @@ async def delete_employee(eid: str, user: dict = Depends(require_role("admin")))
     await db.employees.delete_one({"id": eid})
     await write_audit(db, entity_type="employee", entity_id=eid, action="delete", user=user)
     return {"ok": True}
+
+
+# Permanent admin emails (lowercased) — these are NEVER touched by Excel replace
+PERMANENT_ADMIN_EMPLOYEES_LOWER = {
+    "rohit.kataria@waisldigital.com",
+    "tushar.sukhija@waisldigital.com",
+}
+
+
+def _row_to_employee(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Normalize an Excel/CSV row into an Employee document. Supports BRD column names."""
+    def get(*names):
+        for n in names:
+            for k, v in row.items():
+                if k is None:
+                    continue
+                if str(k).strip().lower().replace(" ", "_").replace("-", "_") == n.lower().replace(" ", "_").replace("-", "_"):
+                    if v is None:
+                        return ""
+                    return str(v).strip() if not isinstance(v, str) else v.strip()
+        return ""
+
+    email = get("Email ID", "email_id", "email")
+    if not email:
+        return None
+    return {
+        "employee_no": get("Employee No", "employee_no"),
+        "email_id": email,
+        "status": get("Status") or "Active",
+        "joining_date": get("Joining Date", "joining_date") or None,
+        "exit_date": get("Exit Date", "exit_date") or None,
+        "employment_type": get("Employement Type", "Employment Type", "employment_type") or "Employee",
+        "employee_name": get("Employee Name", "employee_name"),
+        "role_zoho": get("Role (as per Zoho)", "role_zoho", "role"),
+        "l1_manager": get("L1 Manager", "l1_manager"),
+        "location": get("Location"),
+        "department": get("Department"),
+        "sub_department": get("Sub Department", "sub_department"),
+    }
+
+
+@api.post("/employees/bulk-upload")
+async def employees_bulk_upload(
+    file: UploadFile = File(...),
+    mode: str = Query("append", description="append | replace"),
+    user: dict = Depends(require_role("admin")),
+):
+    if mode not in ("append", "replace"):
+        raise HTTPException(400, "mode must be 'append' or 'replace'")
+    contents = await file.read()
+    fname = (file.filename or "").lower()
+
+    rows: List[Dict[str, Any]] = []
+    try:
+        if fname.endswith(".csv"):
+            import csv
+            import io
+            text = contents.decode("utf-8-sig", errors="ignore")
+            reader = csv.DictReader(io.StringIO(text))
+            for r in reader:
+                rows.append(dict(r))
+        else:
+            from openpyxl import load_workbook
+            import io
+            wb = load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
+            ws = wb.active
+            headers = []
+            for ri, row in enumerate(ws.iter_rows(values_only=True)):
+                if ri == 0:
+                    headers = [str(h or "").strip() for h in row]
+                    continue
+                rd = {headers[i]: (row[i] if i < len(row) else None) for i in range(len(headers))}
+                rows.append(rd)
+    except Exception as e:
+        raise HTTPException(400, f"Failed to parse file: {e}")
+
+    parsed: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+    seen_emails = set()
+    for i, raw in enumerate(rows):
+        emp = _row_to_employee(raw)
+        if not emp:
+            failures.append({"row": i + 2, "reason": "missing email_id"})
+            continue
+        em_low = emp["email_id"].lower()
+        if em_low in seen_emails:
+            failures.append({"row": i + 2, "reason": f"duplicate email in file: {emp['email_id']}"})
+            continue
+        seen_emails.add(em_low)
+        if not emp.get("employee_name"):
+            failures.append({"row": i + 2, "reason": "missing employee_name"})
+            continue
+        emp["id"] = gen_id()
+        emp["created_at"] = now_iso()
+        parsed.append(emp)
+
+    replaced_count = 0
+    if mode == "replace":
+        # Preserve permanent admin employee rows
+        protected = await db.employees.find({}, {"_id": 0}).to_list(5000)
+        protected = [p for p in protected if (p.get("email_id") or "").lower() in PERMANENT_ADMIN_EMPLOYEES_LOWER]
+        if protected:
+            await db.employees.delete_many({"email_id": {"$nin": [p["email_id"] for p in protected]}})
+        else:
+            await db.employees.delete_many({})
+        if parsed:
+            # Skip rows that match permanent admin emails — keep the seeded one
+            protected_lowers = {p["email_id"].lower() for p in protected}
+            kept = [r for r in parsed if r["email_id"].lower() not in protected_lowers]
+            if kept:
+                await db.employees.insert_many(kept)
+            replaced_count = len(kept)
+        await write_audit(db, entity_type="employee", entity_id="bulk", action="replace_upload",
+                          user=user, field_changes={"rows": replaced_count, "protected": len(protected)})
+    else:
+        # Append: skip rows whose email already exists
+        existing_emails = {(e.get("email_id") or "").lower() async for e in db.employees.find({}, {"_id": 0, "email_id": 1})}
+        new_rows = [r for r in parsed if r["email_id"].lower() not in existing_emails]
+        if new_rows:
+            await db.employees.insert_many(new_rows)
+        replaced_count = len(new_rows)
+        await write_audit(db, entity_type="employee", entity_id="bulk", action="append_upload",
+                          user=user, field_changes={"rows": replaced_count})
+
+    return {
+        "mode": mode,
+        "total_rows": len(rows),
+        "saved": replaced_count,
+        "failed": len(failures),
+        "failures": failures[:50],
+    }
 
 
 # ============================================================
