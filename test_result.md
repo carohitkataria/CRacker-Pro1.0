@@ -291,7 +291,50 @@ frontend:
          remains untouched."
 
 frontend:
-  - task: "RolesPage — admin CRUD for workspace section roles"
+  - task: "Employees — Password + Workspace Role fields, template download"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/EmployeesPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Rewritten. New columns Password (shows 'Set' badge) and Roles (workspace role name). Modal has Password input (with toggle visibility) + Workspace Role select. Permanent admins locked. Header has Template download button. Upload modal mentions Password + Roles columns + downloads template. data-testid: employees-template-btn, emp-password, emp-workspace-role, upload-template-link."
+
+  - task: "User Management removed — admin/users redirects to /employees"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Deleted /app/frontend/src/pages/AdminUsersPage.jsx. Sidebar link removed. Route /admin/users now <Navigate to=/employees />. Backend /api/admin/users still exists for backwards compatibility but is no longer used by UI."
+
+  - task: "Settings page — 4 tabs (Roles, Approval Matrix, Currency, Appearance)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/SettingsPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Rebuilt with tab bar persisted via ?tab= query param. RolesPage and ApprovalMatrixPage take `embedded` prop to skip their own PageHeader. /admin/roles & /admin/approval-matrix redirect into the Settings tab. data-testid: settings-tabs, settings-tab-<key>, settings-panel-<key>."
+
+  - task: "WBS and Budget — 2 sub-tabs + Excel-style filters + bulk upload"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/pages/WBSBudgetPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -agent: "main"
+        -comment: "Full rewrite. Two sub-tabs: 'Find WBS' (11 cols) and 'See Budget' (12 cols with formatted currency). 4 colour-modulated filter chips (WBS Element/Description/Person Responsible/Short ID) with: internal search, 'Select all (filtered)', Enter-to-select-all-matching, clear. Global quick-search at right. Stat chips downsized. Template download + Upload modal (append/replace) admin-only. data-testid: wbs-tabs, wbs-tab-find, wbs-tab-budget, wbs-filter-<key>, wbs-filter-search-<key>, wbs-filter-select-all-<key>, wbs-filter-popup-<key>, wbs-template-btn, wbs-upload-modal."
+
     implemented: true
     working: "NA"
     file: "frontend/src/pages/RolesPage.jsx"
@@ -594,6 +637,14 @@ frontend:
         (admin@crackerpro.com / Admin@123). For the parse-pdf endpoint, please test
         with any small PDF (a generated multi-line text PDF is fine — it should still
         return 200 with parsed=null-ish fields and `warnings`).
+    -agent: "testing"
+    -message: |
+        ✅ ITERATION 9 BACKEND TESTING COMPLETE — 100% pass.
+        Employee master Password + Workspace Role sync to /users on create / update / bulk-upload.
+        Employee template includes Password & Roles headers. WBS CRUD + 20-col template + bulk-upload validated.
+        Permanent admin protection still holds. Admin /me/permissions still full.
+        No fixes needed.
+
     -agent: "testing"
     -message: |
         ✅ ITERATION 8 BACKEND TESTING COMPLETE — 100% pass on all 7 RBAC test categories:

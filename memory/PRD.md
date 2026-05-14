@@ -44,6 +44,18 @@ Undo last SAP import, Aviation visual identity (airplane CTA + tricolor stripe +
 - **Project Form `*` markers** on mandatory fields.
 - 16/16 pytest pipeline tests passing (`test_pipeline_iter6.py`).
 
+### Phase 4 Iteration 9 — Feb 2026 ✅ — Employee-as-User unification, Settings tabs, WBS rebuild
+- **Employee master = single source of truth for users.** Two new fields — `Password` and `Workspace Role` — are first-class columns on Employees (UI + Excel template). On create / update / bulk-upload, the employee record is mirrored into the `users` collection (system role = `admin` for permanent admins, else `finance`; workspace `role_id` is set from the chosen role). Permanent admins keep their fixed passwords regardless of input.
+- **User Management page removed.** `/admin/users` now redirects to `/employees`. Backend `/api/admin/users` is preserved for the legacy `admin@crackerpro.com` seeded user only.
+- **Settings page rebuilt with 4 tabs** — `Roles · Approval Matrix · Currency · Appearance`. Active tab is preserved via the `?tab=` query param. `RolesPage` and `ApprovalMatrixPage` accept an `embedded` prop and render inline without their own PageHeader. `/admin/roles` and `/admin/approval-matrix` redirect into the corresponding Settings tab.
+- **WBS and Budget rebuild** —
+  - 20-column SAP-style WBS master (`/api/wbs` CRUD + `/api/wbs/template` + `/api/wbs/bulk-upload`).
+  - 2 sub-tabs: **Find WBS** (11 cols) and **See Budget** (12 cols + currency-formatted numbers).
+  - **4 Excel-style column filters** (WBS Element / Description / Person Responsible / Short ID) — each filter chip has a column-specific HSL hue, supports an internal search box, `Enter` selects all matching options, `Select all (filtered)` and `Clear` actions. Multiple selections are AND-combined across filter columns.
+  - **Quick global search** input at the right of the chip row (small, h-8).
+  - **Stat chips downsized** (compact 2.5 px-y-1 height); on the See-Budget tab they show Original Budget / Total PO / Open PO / Balance summed over the filtered set.
+  - Admin-only Upload modal (append/replace) + Template download.
+
 ### Phase 4 Iteration 8 — Feb 2026 ✅ — RBAC + Admin section lockdown
 - **Permanent Admin accounts** seeded — `rohit.kataria@waisldigital.com` / `RKataria@121` and `tushar.sukhija@waisldigital.com` / `TSukhija@121`. `is_permanent_admin` flag blocks demote / deactivate / password-reset.
 - **Roles & Permissions** — full CRUD at `/api/roles` (admin-only writes). New `RolesPage.jsx` admin UI: matrix of 6 workspace sections × {View, Edit}; Delete is permanently locked as ADMIN ONLY. Edit toggle auto-enables View; unchecking View auto-disables Edit.
