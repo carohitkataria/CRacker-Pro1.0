@@ -3,36 +3,41 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useCurrency } from "@/lib/currency";
 import { useTheme } from "@/lib/theme";
+import { usePermissions } from "@/lib/permissions";
 import {
   ChartLineUp, FolderSimple, Database, UploadSimple, GavelIcon,
   ShieldCheck, ClockCounterClockwise, SignOut, Wallet, UsersThree, Truck, UserCircle,
-  Palette, Gear, FunnelSimple, ArrowsClockwise, CaretLeft, CaretRight, Stack,
+  Palette, Gear, FunnelSimple, ArrowsClockwise, CaretLeft, CaretRight, Stack, IdentificationBadge,
 } from "@phosphor-icons/react";
 
+// Workspace nav — each item is gated by per-section `can_view` permission
 const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: ChartLineUp, testid: "sidebar-dashboard" },
-  { to: "/pipeline", label: "Pipeline", icon: FunnelSimple, testid: "sidebar-pipeline" },
-  { to: "/projects", label: "Projects", icon: FolderSimple, testid: "sidebar-projects" },
-  { to: "/change-requests", label: "Change Requests", icon: ArrowsClockwise, testid: "sidebar-change-requests" },
-  { to: "/customers", label: "Customer Profile", icon: UsersThree, testid: "sidebar-customers" },
-  { to: "/wbs-budget", label: "WBS and Budget", icon: Stack, testid: "sidebar-wbs-budget" },
+  { to: "/dashboard",        label: "Dashboard",        icon: ChartLineUp,    testid: "sidebar-dashboard",        section: "dashboard" },
+  { to: "/pipeline",         label: "Pipeline",         icon: FunnelSimple,   testid: "sidebar-pipeline",         section: "pipeline" },
+  { to: "/projects",         label: "Projects",         icon: FolderSimple,   testid: "sidebar-projects",         section: "projects" },
+  { to: "/change-requests",  label: "Change Requests",  icon: ArrowsClockwise,testid: "sidebar-change-requests",  section: "change_requests" },
+  { to: "/customers",        label: "Customer Profile", icon: UsersThree,     testid: "sidebar-customers",        section: "customer_profile" },
+  { to: "/wbs-budget",       label: "WBS and Budget",   icon: Stack,          testid: "sidebar-wbs-budget",       section: "wbs_budget" },
 ];
 
+// Administration nav — visible to admin role ONLY
 const ADMIN_NAV = [
-  { to: "/approvals", label: "Approvals", icon: GavelIcon, testid: "sidebar-approvals", anyRole: true },
-  { to: "/suppliers", label: "Suppliers", icon: Truck, testid: "sidebar-suppliers", anyRole: true },
-  { to: "/employees", label: "Employees", icon: UserCircle, testid: "sidebar-employees", anyRole: true },
-  { to: "/uploads", label: "Excel Upload", icon: UploadSimple, testid: "sidebar-uploads", anyRole: true },
-  { to: "/audit", label: "Audit Trail", icon: ClockCounterClockwise, testid: "sidebar-audit", anyRole: true },
-  { to: "/admin/approval-matrix", label: "Approval Matrix", icon: Database, testid: "sidebar-approval-matrix" },
-  { to: "/admin/users", label: "User Management", icon: ShieldCheck, testid: "sidebar-admin-users" },
-  { to: "/admin/settings", label: "Settings", icon: Gear, testid: "sidebar-settings" },
+  { to: "/approvals",              label: "Approvals",        icon: GavelIcon,             testid: "sidebar-approvals" },
+  { to: "/suppliers",              label: "Suppliers",        icon: Truck,                 testid: "sidebar-suppliers" },
+  { to: "/employees",              label: "Employees",        icon: UserCircle,            testid: "sidebar-employees" },
+  { to: "/uploads",                label: "Excel Upload",     icon: UploadSimple,          testid: "sidebar-uploads" },
+  { to: "/audit",                  label: "Audit Trail",      icon: ClockCounterClockwise, testid: "sidebar-audit" },
+  { to: "/admin/approval-matrix",  label: "Approval Matrix",  icon: Database,              testid: "sidebar-approval-matrix" },
+  { to: "/admin/users",            label: "User Management",  icon: ShieldCheck,           testid: "sidebar-admin-users" },
+  { to: "/admin/roles",            label: "Roles",            icon: IdentificationBadge,   testid: "sidebar-admin-roles" },
+  { to: "/admin/settings",         label: "Settings",         icon: Gear,                  testid: "sidebar-settings" },
 ];
 
 export default function AppLayout({ children }) {
   const { user, logout } = useAuth();
   const { mode, setMode } = useCurrency();
   const { theme, setTheme, themes } = useTheme();
+  const { is_admin, permissions } = usePermissions();
   const navigate = useNavigate();
   const [showThemes, setShowThemes] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("cp_sidebar_collapsed") === "1");
@@ -42,7 +47,10 @@ export default function AppLayout({ children }) {
   }, [collapsed]);
 
   const asideWidth = collapsed ? "w-16" : "w-64";
-  const adminVisible = ADMIN_NAV.filter((n) => n.anyRole || user?.role === "admin");
+  const isAdminUser = is_admin || user?.role === "admin";
+  // Admin sees everything in workspace nav. Non-admin sees only sections where can_view is true.
+  const navVisible = NAV.filter((n) => isAdminUser || !!permissions?.[n.section]?.can_view);
+  const adminVisible = isAdminUser ? ADMIN_NAV : [];
 
   return (
     <div className="flex min-h-screen bg-[var(--bg)] text-[var(--text)]">
@@ -77,7 +85,7 @@ export default function AppLayout({ children }) {
 
         <nav className="flex-1 py-3 overflow-y-auto">
           <div className="nav-section-label px-4 py-2 text-[10px] tracking-overline" style={{ color: "rgba(255,255,255,0.4)" }}>Workspace</div>
-          {NAV.map((n) => (
+          {navVisible.map((n) => (
             <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`} data-testid={n.testid}>
               <n.icon size={18} weight="duotone" />
               <span className="nav-label">{n.label}</span>
