@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import api, { formatApiErrorDetail } from "@/lib/api";
+import api, { formatApiErrorDetail, API as API_BASE } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
-import { Plus, MagnifyingGlass, PencilSimple, Trash, UploadSimple, X, Warning, Lock } from "@phosphor-icons/react";
+import { Plus, MagnifyingGlass, PencilSimple, Trash, UploadSimple, X, Warning, Lock, DownloadSimple, Eye, EyeSlash } from "@phosphor-icons/react";
 
 const PERMANENT_EMAILS = new Set([
   "rohit.kataria@waisldigital.com",
@@ -15,10 +15,12 @@ const EMPTY = {
   employee_name: "", role_zoho: "",
   l1_manager: "", location: "",
   department: "", sub_department: "",
+  password: "", workspace_role_id: "",
 };
 
 export default function EmployeesPage() {
   const [rows, setRows] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -26,8 +28,9 @@ export default function EmployeesPage() {
   const [err, setErr] = useState("");
 
   const load = async () => {
-    const { data } = await api.get("/employees");
-    setRows(data);
+    const [e, r] = await Promise.all([api.get("/employees"), api.get("/roles")]);
+    setRows(e.data);
+    setRoles(r.data);
   };
   useEffect(() => { load(); }, []);
 
@@ -36,7 +39,7 @@ export default function EmployeesPage() {
     const s = search.toLowerCase();
     return [
       r.employee_no, r.employee_name, r.email_id, r.role_zoho,
-      r.location, r.department, r.sub_department, r.l1_manager,
+      r.location, r.department, r.sub_department, r.l1_manager, r.workspace_role_name,
     ].some((v) => (v || "").toString().toLowerCase().includes(s));
   });
 
@@ -58,10 +61,13 @@ export default function EmployeesPage() {
     <div data-testid="employees-page">
       <PageHeader
         title="Employees"
-        subtitle="Employee master — Admin-managed roster aligned to WAISL HR (Zoho)"
+        subtitle="Master roster · password & workspace role are managed here (no separate User Management)"
         breadcrumb="HOME · ADMINISTRATION · EMPLOYEES"
         actions={
           <div className="flex gap-2">
+            <a className="btn-ghost flex items-center gap-2 text-xs" href={`${API_BASE}/employees/template`} data-testid="employees-template-btn">
+              <DownloadSimple size={14} weight="bold" /> Template
+            </a>
             <button className="btn-secondary flex items-center gap-2" onClick={() => setShowUpload(true)} data-testid="employees-upload-btn">
               <UploadSimple size={14} weight="bold" /> Upload Excel
             </button>
@@ -78,7 +84,7 @@ export default function EmployeesPage() {
             <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
             <input
               className="input pl-9"
-              placeholder="Search by name, email, employee no, department…"
+              placeholder="Search by name, email, employee no, department, role…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               data-testid="employees-search"
@@ -95,7 +101,7 @@ export default function EmployeesPage() {
         )}
 
         <div className="tile overflow-x-auto">
-          <table className="tbl min-w-[1400px]" data-testid="employees-table">
+          <table className="tbl min-w-[1500px]" data-testid="employees-table">
             <thead>
               <tr>
                 <th>Employee No</th>
@@ -110,6 +116,8 @@ export default function EmployeesPage() {
                 <th>Location</th>
                 <th>Department</th>
                 <th>Sub Department</th>
+                <th>Password</th>
+                <th>Roles</th>
                 <th></th>
               </tr>
             </thead>
@@ -133,6 +141,16 @@ export default function EmployeesPage() {
                     <td>{r.location || "—"}</td>
                     <td>{r.department || "—"}</td>
                     <td>{r.sub_department || "—"}</td>
+                    <td>
+                      {r.has_user_account
+                        ? <span className="badge badge-approved flex items-center gap-1 w-fit"><Lock size={10} weight="fill" /> Set</span>
+                        : <span className="text-[var(--muted)] text-xs">—</span>}
+                    </td>
+                    <td>
+                      {isPerm
+                        ? <span className="badge badge-gold">Admin (full)</span>
+                        : (r.workspace_role_name ? <span className="badge badge-neutral">{r.workspace_role_name}</span> : <span className="text-[var(--muted)] text-xs">—</span>)}
+                    </td>
                     <td className="text-right whitespace-nowrap">
                       <button className="btn-ghost" title="Edit" onClick={() => setEditing(r)} data-testid={`employee-edit-${r.id}`}>
                         <PencilSimple size={14} weight="duotone" className="text-[var(--gold)]" />
@@ -151,7 +169,7 @@ export default function EmployeesPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={13} className="text-center py-12 text-[var(--muted)]">No employees — upload Excel or click <span className="text-[var(--gold)] font-semibold">Add Employee</span></td></tr>
+                <tr><td colSpan={15} className="text-center py-12 text-[var(--muted)]">No employees — upload Excel or click <span className="text-[var(--gold)] font-semibold">Add Employee</span></td></tr>
               )}
             </tbody>
           </table>
@@ -161,6 +179,7 @@ export default function EmployeesPage() {
       {(showCreate || editing) && (
         <EmployeeModal
           employee={editing}
+          roles={roles}
           onClose={() => { setShowCreate(false); setEditing(null); }}
           onSaved={() => { setShowCreate(false); setEditing(null); load(); }}
         />
@@ -170,19 +189,22 @@ export default function EmployeesPage() {
   );
 }
 
-function EmployeeModal({ employee, onClose, onSaved }) {
-  const [form, setForm] = useState(employee ? { ...EMPTY, ...employee } : EMPTY);
+function EmployeeModal({ employee, roles, onClose, onSaved }) {
+  const [form, setForm] = useState(employee ? { ...EMPTY, ...employee, password: "" } : EMPTY);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const isPerm = PERMANENT_EMAILS.has((form.email_id || "").toLowerCase());
 
   const submit = async () => {
     setBusy(true); setErr("");
     try {
       const payload = { ...form };
-      // empty strings → null for date fields
       if (!payload.joining_date) payload.joining_date = null;
       if (!payload.exit_date) payload.exit_date = null;
+      if (!payload.password) delete payload.password;
+      if (!payload.workspace_role_id) payload.workspace_role_id = null;
       if (employee?.id) {
         await api.put(`/employees/${employee.id}`, payload);
       } else {
@@ -200,13 +222,20 @@ function EmployeeModal({ employee, onClose, onSaved }) {
         <div className="flex items-center justify-between p-5 border-b border-[var(--border)]">
           <div>
             <div className="text-[10px] tracking-overline text-[var(--muted)]">{employee ? "EDIT" : "NEW"} EMPLOYEE</div>
-            <h2 className="font-display text-xl font-bold">{employee?.employee_name || "New Employee"}</h2>
+            <h2 className="font-display text-xl font-bold flex items-center gap-2">{isPerm && <Lock size={14} weight="fill" className="text-[var(--gold)]" />}{employee?.employee_name || "New Employee"}</h2>
           </div>
           <button className="btn-ghost" onClick={onClose} data-testid="employee-modal-close"><X size={18} /></button>
         </div>
+        {isPerm && (
+          <div className="px-5 pt-4">
+            <div className="text-[11px] text-[var(--gold)] bg-[color-mix(in_srgb,var(--gold)_10%,transparent)] p-2 border border-[color-mix(in_srgb,var(--gold)_35%,transparent)] flex items-center gap-1">
+              <Lock size={12} weight="fill" /> Permanent admin — email is locked & role is always Admin (full access). Password change is ignored.
+            </div>
+          </div>
+        )}
         <div className="p-5 grid grid-cols-2 gap-4">
           <FormField label="Employee No" required value={form.employee_no} onChange={(v) => set("employee_no", v)} testid="emp-no" />
-          <FormField label="Email ID" required type="email" value={form.email_id} onChange={(v) => set("email_id", v)} testid="emp-email" />
+          <FormField label="Email ID" required type="email" value={form.email_id} onChange={(v) => set("email_id", v)} disabled={isPerm} testid="emp-email" />
           <FormField label="Employee Name" required value={form.employee_name} onChange={(v) => set("employee_name", v)} testid="emp-name" />
           <SelectField label="Status" value={form.status} options={["Active", "Inactive", "Exited"]} onChange={(v) => set("status", v)} testid="emp-status" />
           <FormField label="Joining Date" value={form.joining_date || ""} onChange={(v) => set("joining_date", v)} placeholder="DD-MM-YYYY" testid="emp-joining" />
@@ -217,6 +246,41 @@ function EmployeeModal({ employee, onClose, onSaved }) {
           <FormField label="Location" value={form.location || ""} onChange={(v) => set("location", v)} testid="emp-location" />
           <FormField label="Department" value={form.department || ""} onChange={(v) => set("department", v)} testid="emp-dept" />
           <FormField label="Sub Department" value={form.sub_department || ""} onChange={(v) => set("sub_department", v)} testid="emp-subdept" />
+          {/* NEW Iter 9: Password & Workspace Role */}
+          <div>
+            <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1.5">
+              Password {!employee && <span className="text-[var(--gold)]">*</span>}
+              {employee && <span className="text-[var(--muted)] normal-case ml-1">(leave blank to keep)</span>}
+            </label>
+            <div className="relative">
+              <input
+                className="input pr-9"
+                type={showPwd ? "text" : "password"}
+                value={form.password || ""}
+                placeholder={employee ? "•••••••• (unchanged)" : "Set initial password"}
+                disabled={isPerm}
+                onChange={(e) => set("password", e.target.value)}
+                data-testid="emp-password"
+              />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 btn-ghost" onClick={() => setShowPwd(!showPwd)}>
+                {showPwd ? <EyeSlash size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1.5">Workspace Role</label>
+            <select
+              className="input"
+              value={form.workspace_role_id || ""}
+              disabled={isPerm}
+              onChange={(e) => set("workspace_role_id", e.target.value)}
+              data-testid="emp-workspace-role"
+            >
+              <option value="">{isPerm ? "Admin — Full Access" : "— No workspace access —"}</option>
+              {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+            <div className="text-[10px] text-[var(--muted)] mt-1">Manage roles under <em>Settings → Roles</em>.</div>
+          </div>
           {err && <div className="col-span-2 text-xs text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] p-2 border border-[var(--danger)]">{err}</div>}
         </div>
         <div className="p-5 border-t border-[var(--border)] flex justify-end gap-2">
@@ -245,7 +309,7 @@ function UploadModal({ onClose, onUploaded }) {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setResult(data);
-      onUploaded(); // refresh list immediately
+      onUploaded();
     } catch (e) {
       setErr(formatApiErrorDetail(e.response?.data?.detail) || e.message);
     } finally { setBusy(false); }
@@ -262,6 +326,12 @@ function UploadModal({ onClose, onUploaded }) {
           <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
+          <div className="flex justify-between items-center">
+            <a className="btn-ghost text-xs flex items-center gap-1" href={`${API_BASE}/employees/template`} data-testid="upload-template-link">
+              <DownloadSimple size={12} weight="bold" /> Download template (with Password & Roles)
+            </a>
+          </div>
+
           <div>
             <div className="text-[10px] tracking-overline text-[var(--muted)] mb-2">Mode</div>
             <div className="grid grid-cols-2 gap-2">
@@ -291,8 +361,12 @@ function UploadModal({ onClose, onUploaded }) {
               <button className="btn-secondary text-xs" onClick={() => ref.current?.click()} data-testid="upload-file-pick">Choose file</button>
               <span className="text-xs text-[var(--muted)] truncate flex-1">{file ? `${file.name} · ${(file.size / 1024).toFixed(1)} KB` : "No file selected"}</span>
             </div>
-            <div className="text-[10px] text-[var(--muted)] mt-2">
-              Required columns (header row 1): Employee No, Email ID, Status, Joining Date, Exit Date, Employement Type, Employee Name, Role (as per Zoho), L1 Manager, Location, Department, Sub Department.
+            <div className="text-[10px] text-[var(--muted)] mt-2 leading-relaxed">
+              <strong>Columns (header row 1):</strong> Employee No, Email ID, Status, Joining Date, Exit Date,
+              Employement Type, Employee Name, Role (as per Zoho), L1 Manager, Location, Department,
+              Sub Department, <strong className="text-[var(--gold)]">Password</strong>, <strong className="text-[var(--gold)]">Roles</strong>.
+              <br />The <em>Roles</em> column must match an existing workspace role name (case-insensitive).
+              The <em>Password</em> column creates / updates the login credential.
             </div>
           </div>
 
@@ -335,7 +409,7 @@ function UploadModal({ onClose, onUploaded }) {
   );
 }
 
-function FormField({ label, value, onChange, required, type = "text", placeholder, testid }) {
+function FormField({ label, value, onChange, required, type = "text", placeholder, testid, disabled }) {
   return (
     <div>
       <label className="block text-[10px] tracking-overline text-[var(--muted)] mb-1.5">
@@ -346,6 +420,7 @@ function FormField({ label, value, onChange, required, type = "text", placeholde
         type={type}
         value={value || ""}
         placeholder={placeholder}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         data-testid={testid}
       />

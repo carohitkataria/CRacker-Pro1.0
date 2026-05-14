@@ -17,7 +17,7 @@ const EMPTY_PERMS = SECTIONS.reduce((acc, s) => {
   return acc;
 }, {});
 
-export default function RolesPage() {
+export default function RolesPage({ embedded = false }) {
   const [rows, setRows] = useState([]);
   const [editing, setEditing] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -46,18 +46,31 @@ export default function RolesPage() {
 
   return (
     <div data-testid="roles-page">
-      <PageHeader
-        title="Roles & Permissions"
-        subtitle="Define workspace-section access per role · View / Edit only · Delete is reserved for Admin"
-        breadcrumb="HOME · ADMINISTRATION · ROLES"
-        actions={
-          <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} data-testid="roles-add-btn">
-            <Plus size={14} weight="bold" /> New Role
-          </button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title="Roles & Permissions"
+          subtitle="Define workspace-section access per role · View / Edit only · Delete is reserved for Admin"
+          breadcrumb="HOME · ADMINISTRATION · ROLES"
+          actions={
+            <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} data-testid="roles-add-btn">
+              <Plus size={14} weight="bold" /> New Role
+            </button>
+          }
+        />
+      )}
 
-      <div className="px-8 py-6 space-y-5">
+      <div className={embedded ? "space-y-5" : "px-8 py-6 space-y-5"}>
+        {embedded && (
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-display text-lg font-bold">Roles &amp; Permissions</h3>
+              <div className="text-xs text-[var(--muted)]">Define workspace-section access per role · View / Edit only · Delete is reserved for Admin</div>
+            </div>
+            <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} data-testid="roles-add-btn">
+              <Plus size={14} weight="bold" /> New Role
+            </button>
+          </div>
+        )}
         <div className="tile p-4 text-[12px] text-[var(--muted)] flex items-start gap-2">
           <ShieldStar size={16} weight="duotone" className="text-[var(--gold)] mt-0.5" />
           <div>

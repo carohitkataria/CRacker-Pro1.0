@@ -15,14 +15,11 @@ import CustomerProfilePage from "@/pages/CustomerProfilePage";
 import UploadsPage from "@/pages/UploadsPage";
 import ApprovalsPage from "@/pages/ApprovalsPage";
 import AuditPage from "@/pages/AuditPage";
-import AdminUsersPage from "@/pages/AdminUsersPage";
-import ApprovalMatrixPage from "@/pages/ApprovalMatrixPage";
 import SettingsPage from "@/pages/SettingsPage";
 import PipelinePage from "@/pages/PipelinePage";
 import ChangeRequestsPage from "@/pages/ChangeRequestsPage";
 import WBSBudgetPage from "@/pages/WBSBudgetPage";
 import EmployeesPage from "@/pages/EmployeesPage";
-import RolesPage from "@/pages/RolesPage";
 
 function Protected({ children, adminOnly }) {
   const { user } = useAuth();
@@ -79,9 +76,10 @@ function App() {
                 <Route path="/uploads" element={<Protected adminOnly><UploadsPage /></Protected>} />
                 <Route path="/approvals" element={<Protected adminOnly><ApprovalsPage /></Protected>} />
                 <Route path="/audit" element={<Protected adminOnly><AuditPage /></Protected>} />
-                <Route path="/admin/users" element={<Protected adminOnly><AdminUsersPage /></Protected>} />
-                <Route path="/admin/approval-matrix" element={<Protected adminOnly><ApprovalMatrixPage /></Protected>} />
-                <Route path="/admin/roles" element={<Protected adminOnly><RolesPage /></Protected>} />
+                {/* Backwards-compatible redirects — User Management is gone; Roles & Approval Matrix moved under Settings */}
+                <Route path="/admin/users" element={<Navigate to="/employees" replace />} />
+                <Route path="/admin/approval-matrix" element={<Navigate to="/admin/settings?tab=approval" replace />} />
+                <Route path="/admin/roles" element={<Navigate to="/admin/settings?tab=roles" replace />} />
                 <Route path="/admin/settings" element={<Protected adminOnly><SettingsPage /></Protected>} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>

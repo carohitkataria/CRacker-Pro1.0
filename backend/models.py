@@ -158,10 +158,29 @@ class EmployeeIn(BaseModel):
     location: Optional[str] = None
     department: Optional[str] = None
     sub_department: Optional[str] = None
+    # NEW Iter 9 — credentials & workspace role (sync to /users collection on save)
+    password: Optional[str] = None        # write-only; never returned in EmployeeOut
+    workspace_role_id: Optional[str] = None
 
 
-class EmployeeOut(EmployeeIn):
+class EmployeeOut(BaseModel):
     id: str
+    employee_no: str
+    email_id: str
+    status: str
+    joining_date: Optional[str] = None
+    exit_date: Optional[str] = None
+    employment_type: str
+    employee_name: str
+    role_zoho: Optional[str] = None
+    l1_manager: Optional[str] = None
+    location: Optional[str] = None
+    department: Optional[str] = None
+    sub_department: Optional[str] = None
+    workspace_role_id: Optional[str] = None
+    workspace_role_name: Optional[str] = None
+    has_user_account: bool = False
+    is_permanent_admin: bool = False
     created_at: str
 
 
@@ -499,3 +518,39 @@ class PipelineStageIn(BaseModel):
 class PipelineHandoffAction(BaseModel):
     action: Literal["approve", "reject"]
     comment: Optional[str] = ""
+
+
+
+# ---------- WBS ELEMENT (SAP-style master) ----------
+# Header order from BRD (20 columns):
+# Project definition | WBS element | Name | Original Budget | Total PO Value |
+# Open PO Value | Balance Budget | Level | Acct asst elem.ind. | Company code |
+# Currency | Description | Object Class | Person responsible | Plant |
+# Profit center | Short ID | Status | Cost Center | Controlling area
+class WBSElementIn(BaseModel):
+    project_definition: Optional[str] = None
+    wbs_element: str
+    name: Optional[str] = None
+    original_budget: float = 0.0
+    total_po_value: float = 0.0
+    open_po_value: float = 0.0
+    balance_budget: float = 0.0
+    level: Optional[str] = None
+    acct_asst_elem_ind: Optional[str] = None  # "Acct asst elem.ind."
+    company_code: Optional[str] = None
+    currency: Optional[str] = "INR"
+    description: Optional[str] = None
+    object_class: Optional[str] = None
+    person_responsible: Optional[str] = None
+    plant: Optional[str] = None
+    profit_center: Optional[str] = None
+    short_id: Optional[str] = None
+    status: Optional[str] = None
+    cost_center: Optional[str] = None
+    controlling_area: Optional[str] = None
+
+
+class WBSElementOut(WBSElementIn):
+    id: str
+    created_at: str
+    updated_at: Optional[str] = None

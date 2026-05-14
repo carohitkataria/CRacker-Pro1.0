@@ -21,15 +21,13 @@ const NAV = [
 ];
 
 // Administration nav — visible to admin role ONLY
+// (Roles and Approval Matrix moved under Settings; User Management merged into Employees)
 const ADMIN_NAV = [
   { to: "/approvals",              label: "Approvals",        icon: GavelIcon,             testid: "sidebar-approvals" },
   { to: "/suppliers",              label: "Suppliers",        icon: Truck,                 testid: "sidebar-suppliers" },
   { to: "/employees",              label: "Employees",        icon: UserCircle,            testid: "sidebar-employees" },
   { to: "/uploads",                label: "Excel Upload",     icon: UploadSimple,          testid: "sidebar-uploads" },
   { to: "/audit",                  label: "Audit Trail",      icon: ClockCounterClockwise, testid: "sidebar-audit" },
-  { to: "/admin/approval-matrix",  label: "Approval Matrix",  icon: Database,              testid: "sidebar-approval-matrix" },
-  { to: "/admin/users",            label: "User Management",  icon: ShieldCheck,           testid: "sidebar-admin-users" },
-  { to: "/admin/roles",            label: "Roles",            icon: IdentificationBadge,   testid: "sidebar-admin-roles" },
   { to: "/admin/settings",         label: "Settings",         icon: Gear,                  testid: "sidebar-settings" },
 ];
 

@@ -9,7 +9,7 @@ const STAGES = ["", "Deal P&L", "Customer PO", "Operations", "Closure"];
 const ROLES = ["", "admin", "finance", "leadership", "approver"];
 const BIZ = ["Any", "GMR", "Non-GMR"];
 
-export default function ApprovalMatrixPage() {
+export default function ApprovalMatrixPage({ embedded = false }) {
   const [rows, setRows] = useState([]);
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -28,13 +28,24 @@ export default function ApprovalMatrixPage() {
 
   return (
     <div data-testid="approval-matrix-page">
-      <PageHeader
-        title="Approval Matrix"
-        subtitle="Configure who must approve which stage transitions, and when"
-        breadcrumb="HOME · ADMIN · APPROVAL MATRIX"
-        actions={<button className="btn-primary text-xs flex items-center gap-1" onClick={() => { setEditing(null); setShow(true); }} data-testid="add-rule-btn"><Plus size={12} /> Add Rule</button>}
-      />
-      <div className="px-8 py-5">
+      {!embedded && (
+        <PageHeader
+          title="Approval Matrix"
+          subtitle="Configure who must approve which stage transitions, and when"
+          breadcrumb="HOME · ADMIN · APPROVAL MATRIX"
+          actions={<button className="btn-primary text-xs flex items-center gap-1" onClick={() => { setEditing(null); setShow(true); }} data-testid="add-rule-btn"><Plus size={12} /> Add Rule</button>}
+        />
+      )}
+      <div className={embedded ? "space-y-4" : "px-8 py-5"}>
+        {embedded && (
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-display text-lg font-bold">Approval Matrix</h3>
+              <div className="text-xs text-[var(--muted)]">Configure who must approve which stage transitions, and when.</div>
+            </div>
+            <button className="btn-primary text-xs flex items-center gap-1" onClick={() => { setEditing(null); setShow(true); }} data-testid="add-rule-btn"><Plus size={12} /> Add Rule</button>
+          </div>
+        )}
         <div className="tile overflow-x-auto">
           <table className="tbl">
             <thead>

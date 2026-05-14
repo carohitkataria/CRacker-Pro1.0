@@ -28,6 +28,7 @@ from models import (
     AuditLogOut, UploadLogOut, gen_id, now_iso, STAGES,
     PipelineIn, PipelineOut, PipelineStageIn, PipelineHandoffAction, PIPELINE_STAGES,
     RoleIn, RoleOut, WORKSPACE_SECTIONS,
+    WBSElementIn, WBSElementOut,
 )
 from services import (
     can_transition, write_audit, compute_margin, find_matching_rule, create_approval_request,
@@ -644,22 +645,101 @@ async def delete_customer(cid: str, user: dict = Depends(require_role("admin")))
 # ============================================================
 # EMPLOYEES
 # ============================================================
+async def _enrich_employee(emp: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach workspace_role_name + has_user_account + is_permanent_admin to an employee record."""
+    if not emp:
+        return emp
+    emp.pop("_id", None)
+    emp.pop("password", None)
+    role_name = None
+    rid = emp.get("workspace_role_id")
+    if rid:
+        role = await db.roles.find_one({"id": rid}, {"_id": 0, "name": 1})
+        if role:
+            role_name = role.get("name")
+    emp["workspace_role_name"] = role_name
+    em_low = (emp.get("email_id") or "").lower()
+    user_doc = await db.users.find_one({"email": em_low}, {"_id": 0, "id": 1})
+    emp["has_user_account"] = bool(user_doc)
+    emp["is_permanent_admin"] = em_low in PERMANENT_ADMIN_EMPLOYEES_LOWER
+    return emp
+
+
+async def _sync_employee_to_user(emp: Dict[str, Any], password: Optional[str], workspace_role_id: Optional[str], actor: dict) -> None:
+    """Upsert a /users record for the given employee.
+
+    - If the user does not exist and a password is supplied, create a new auth user
+      with system role = 'admin' for permanent admins, else 'finance' (workspace
+      access is gated by `role_id`).
+    - If the user exists, update role_id and (optionally) password_hash.
+    - Permanent admins keep system role = 'admin' and ignore role_id (full access).
+    """
+    if not emp:
+        return
+    email_low = (emp.get("email_id") or "").lower()
+    if not email_low:
+        return
+    is_perm = email_low in PERMANENT_ADMIN_EMPLOYEES_LOWER
+    user_doc = await db.users.find_one({"email": email_low})
+
+    if user_doc is None:
+        # Need at least a password to create
+        if not password:
+            return
+        sys_role = "admin" if is_perm else "finance"
+        new_user = {
+            "id": gen_id(),
+            "email": email_low,
+            "password_hash": hash_password(password),
+            "name": emp.get("employee_name") or email_low,
+            "role": sys_role,
+            "role_id": None if (sys_role == "admin") else workspace_role_id,
+            "location": emp.get("location"),
+            "reporting_manager_email": None,
+            "is_active": True,
+            "is_permanent_admin": is_perm,
+            "created_at": now_iso(),
+            "must_change_password": False,
+        }
+        await db.users.insert_one(new_user)
+        return
+
+    # Existing user — patch
+    updates: Dict[str, Any] = {}
+    if password:
+        if is_perm:
+            # Permanent admins keep fixed password; ignore any change request
+            pass
+        else:
+            updates["password_hash"] = hash_password(password)
+    if not is_perm:
+        updates["role_id"] = workspace_role_id
+    # Always refresh display name
+    if emp.get("employee_name"):
+        updates["name"] = emp["employee_name"]
+    if updates:
+        await db.users.update_one({"email": email_low}, {"$set": updates})
+
+
 @api.get("/employees", response_model=List[EmployeeOut])
 async def list_employees(_: dict = Depends(get_current_user)):
-    return await db.employees.find({}, {"_id": 0}).to_list(2000)
+    emps = await db.employees.find({}, {"_id": 0}).to_list(2000)
+    return [await _enrich_employee(e) for e in emps]
 
 
 @api.post("/employees", response_model=EmployeeOut)
 async def create_employee(payload: EmployeeIn, user: dict = Depends(require_role("admin"))):
     doc = payload.model_dump()
+    password = doc.pop("password", None)
     doc["id"] = gen_id()
     doc["created_at"] = now_iso()
     if await db.employees.find_one({"email_id": doc["email_id"]}):
         raise HTTPException(409, "Employee email already exists")
     await db.employees.insert_one(doc)
-    await write_audit(db, entity_type="employee", entity_id=doc["id"], action="create", user=user, field_changes=doc)
-    doc.pop("_id", None)
-    return doc
+    # Sync auth user if password / role provided
+    await _sync_employee_to_user(doc, password=password, workspace_role_id=doc.get("workspace_role_id"), actor=user)
+    await write_audit(db, entity_type="employee", entity_id=doc["id"], action="create", user=user, field_changes={**{k: v for k, v in doc.items() if k != "password"}, "password_set": bool(password)})
+    return await _enrich_employee(doc)
 
 
 @api.put("/employees/{eid}", response_model=EmployeeOut)
@@ -668,14 +748,29 @@ async def update_employee(eid: str, payload: EmployeeIn, user: dict = Depends(re
     if not existing:
         raise HTTPException(404, "Not found")
     updates = payload.model_dump()
+    password = updates.pop("password", None)
+    # Lock permanent admin essentials: cannot change email
+    if (existing.get("email_id") or "").lower() in PERMANENT_ADMIN_EMPLOYEES_LOWER:
+        updates["email_id"] = existing["email_id"]
     await db.employees.update_one({"id": eid}, {"$set": updates})
-    await write_audit(db, entity_type="employee", entity_id=eid, action="update", user=user, field_changes=updates)
-    return await db.employees.find_one({"id": eid}, {"_id": 0})
+    merged = {**existing, **updates}
+    await _sync_employee_to_user(merged, password=password, workspace_role_id=merged.get("workspace_role_id"), actor=user)
+    await write_audit(db, entity_type="employee", entity_id=eid, action="update", user=user, field_changes={**{k: v for k, v in updates.items()}, "password_changed": bool(password)})
+    return await _enrich_employee(await db.employees.find_one({"id": eid}, {"_id": 0}))
 
 
 @api.delete("/employees/{eid}")
 async def delete_employee(eid: str, user: dict = Depends(require_role("admin"))):
+    existing = await db.employees.find_one({"id": eid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    em_low = (existing.get("email_id") or "").lower()
+    if em_low in PERMANENT_ADMIN_EMPLOYEES_LOWER:
+        raise HTTPException(400, "Cannot delete permanent admin employee")
     await db.employees.delete_one({"id": eid})
+    # Deactivate linked auth user (don't hard-delete to preserve history)
+    if em_low:
+        await db.users.update_one({"email": em_low}, {"$set": {"is_active": False}})
     await write_audit(db, entity_type="employee", entity_id=eid, action="delete", user=user)
     return {"ok": True}
 
@@ -685,6 +780,37 @@ PERMANENT_ADMIN_EMPLOYEES_LOWER = {
     "rohit.kataria@waisldigital.com",
     "tushar.sukhija@waisldigital.com",
 }
+
+
+# BRD-format employee template (used by EmployeesPage)
+EMPLOYEE_BRD_COLUMNS = [
+    "Employee No", "Email ID", "Status", "Joining Date", "Exit Date",
+    "Employement Type", "Employee Name", "Role (as per Zoho)", "L1 Manager",
+    "Location", "Department", "Sub Department",
+    "Password", "Roles",
+]
+
+
+@api.get("/employees/template")
+async def employees_template(_: dict = Depends(get_current_user)):
+    """Download a blank employee Excel template aligned with BRD columns + Password + Roles."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Employees"
+    ws.append(EMPLOYEE_BRD_COLUMNS)
+    # Sample row for reference (commented-out tone via grey would be nice; we just include one example)
+    ws.append([
+        "W9999", "new.user@waisldigital.com", "Active", "01-01-2026", "",
+        "Employee", "New User Name", "Manager", "W1018",
+        "New Delhi", "Finance", "Business Finance",
+        "Welcome@123", "Sales Viewer",
+    ])
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return StreamingResponse(buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="employees_template.xlsx"'})
 
 
 def _row_to_employee(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -716,6 +842,9 @@ def _row_to_employee(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "location": get("Location"),
         "department": get("Department"),
         "sub_department": get("Sub Department", "sub_department"),
+        # NEW Iter 9 — auth credentials & workspace role name (resolved to id later)
+        "_password": get("Password", "password") or None,
+        "_role_name": get("Roles", "Role Name", "Workspace Role", "workspace_role") or None,
     }
 
 
@@ -757,6 +886,10 @@ async def employees_bulk_upload(
     parsed: List[Dict[str, Any]] = []
     failures: List[Dict[str, Any]] = []
     seen_emails = set()
+    # Resolve workspace role names → ids once
+    role_docs = await db.roles.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
+    role_name_to_id = {(r.get("name") or "").lower(): r["id"] for r in role_docs}
+
     for i, raw in enumerate(rows):
         emp = _row_to_employee(raw)
         if not emp:
@@ -770,9 +903,20 @@ async def employees_bulk_upload(
         if not emp.get("employee_name"):
             failures.append({"row": i + 2, "reason": "missing employee_name"})
             continue
+        # Pop transient fields used for user sync
+        password = emp.pop("_password", None) or None
+        role_name = emp.pop("_role_name", None) or None
+        wrk_role_id = role_name_to_id.get((role_name or "").lower()) if role_name else None
+        emp["workspace_role_id"] = wrk_role_id
+        emp["_sync_password"] = password  # carry forward for sync; stripped before persistence
         emp["id"] = gen_id()
         emp["created_at"] = now_iso()
         parsed.append(emp)
+
+    def _strip_for_db(d: Dict[str, Any]) -> Dict[str, Any]:
+        out = dict(d)
+        out.pop("_sync_password", None)
+        return out
 
     replaced_count = 0
     if mode == "replace":
@@ -788,7 +932,10 @@ async def employees_bulk_upload(
             protected_lowers = {p["email_id"].lower() for p in protected}
             kept = [r for r in parsed if r["email_id"].lower() not in protected_lowers]
             if kept:
-                await db.employees.insert_many(kept)
+                await db.employees.insert_many([_strip_for_db(r) for r in kept])
+                # Sync each to users collection (password / role)
+                for r in kept:
+                    await _sync_employee_to_user(r, password=r.get("_sync_password"), workspace_role_id=r.get("workspace_role_id"), actor=user)
             replaced_count = len(kept)
         await write_audit(db, entity_type="employee", entity_id="bulk", action="replace_upload",
                           user=user, field_changes={"rows": replaced_count, "protected": len(protected)})
@@ -797,7 +944,9 @@ async def employees_bulk_upload(
         existing_emails = {(e.get("email_id") or "").lower() async for e in db.employees.find({}, {"_id": 0, "email_id": 1})}
         new_rows = [r for r in parsed if r["email_id"].lower() not in existing_emails]
         if new_rows:
-            await db.employees.insert_many(new_rows)
+            await db.employees.insert_many([_strip_for_db(r) for r in new_rows])
+            for r in new_rows:
+                await _sync_employee_to_user(r, password=r.get("_sync_password"), workspace_role_id=r.get("workspace_role_id"), actor=user)
         replaced_count = len(new_rows)
         await write_audit(db, entity_type="employee", entity_id="bulk", action="append_upload",
                           user=user, field_changes={"rows": replaced_count})
@@ -806,6 +955,194 @@ async def employees_bulk_upload(
         "mode": mode,
         "total_rows": len(rows),
         "saved": replaced_count,
+        "failed": len(failures),
+        "failures": failures[:50],
+    }
+
+
+
+# ============================================================
+# WBS ELEMENTS (SAP-style master + Find / View Budget)
+# ============================================================
+WBS_BRD_COLUMNS = [
+    "Project definition", "WBS element", "Name",
+    "Original Budget", "Total PO Value", "Open PO Value", "Balance Budget",
+    "Level", "Acct asst elem.ind.", "Company code", "Currency",
+    "Description", "Object Class", "Person responsible", "Plant",
+    "Profit center", "Short ID", "Status", "Cost Center", "Controlling area",
+]
+
+WBS_COL_TO_FIELD = {
+    "Project definition": "project_definition",
+    "WBS element": "wbs_element",
+    "Name": "name",
+    "Original Budget": "original_budget",
+    "Total PO Value": "total_po_value",
+    "Open PO Value": "open_po_value",
+    "Balance Budget": "balance_budget",
+    "Level": "level",
+    "Acct asst elem.ind.": "acct_asst_elem_ind",
+    "Company code": "company_code",
+    "Currency": "currency",
+    "Description": "description",
+    "Object Class": "object_class",
+    "Person responsible": "person_responsible",
+    "Plant": "plant",
+    "Profit center": "profit_center",
+    "Short ID": "short_id",
+    "Status": "status",
+    "Cost Center": "cost_center",
+    "Controlling area": "controlling_area",
+}
+
+_NUMERIC_FIELDS = {"original_budget", "total_po_value", "open_po_value", "balance_budget"}
+
+
+def _coerce_wbs_value(field: str, val: Any) -> Any:
+    if val is None:
+        return 0.0 if field in _NUMERIC_FIELDS else None
+    if field in _NUMERIC_FIELDS:
+        try:
+            return float(str(val).replace(",", ""))
+        except Exception:
+            return 0.0
+    return str(val).strip() if not isinstance(val, str) else val.strip()
+
+
+@api.get("/wbs", response_model=List[WBSElementOut])
+async def list_wbs(_: dict = Depends(get_current_user)):
+    return await db.wbs_elements.find({}, {"_id": 0}).to_list(20000)
+
+
+@api.get("/wbs/template")
+async def wbs_template(_: dict = Depends(get_current_user)):
+    """Download a blank WBS Excel template (20 BRD columns)."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "WBS"
+    ws.append(WBS_BRD_COLUMNS)
+    ws.append([
+        "C.0050021", "C.0050021.01", "Smart Airside Phase 1",
+        12000000, 8500000, 1200000, 3500000,
+        "1", "P", "1000", "INR",
+        "Phase-1 implementation", "Investment", "Rohit Kataria", "DXB",
+        "P-INFRA-01", "SAGS-P1", "REL", "CC-INFRA-OPS", "1000",
+    ])
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return StreamingResponse(buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="wbs_template.xlsx"'})
+
+
+@api.post("/wbs", response_model=WBSElementOut)
+async def create_wbs(payload: WBSElementIn, user: dict = Depends(require_role("admin"))):
+    doc = payload.model_dump()
+    doc["id"] = gen_id()
+    doc["created_at"] = now_iso()
+    doc["updated_at"] = doc["created_at"]
+    if await db.wbs_elements.find_one({"wbs_element": doc["wbs_element"]}):
+        raise HTTPException(409, "WBS element already exists")
+    await db.wbs_elements.insert_one(doc)
+    await write_audit(db, entity_type="wbs", entity_id=doc["id"], action="create", user=user, field_changes=doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/wbs/{wid}", response_model=WBSElementOut)
+async def update_wbs(wid: str, payload: WBSElementIn, user: dict = Depends(require_role("admin"))):
+    existing = await db.wbs_elements.find_one({"id": wid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    upd = payload.model_dump()
+    upd["updated_at"] = now_iso()
+    await db.wbs_elements.update_one({"id": wid}, {"$set": upd})
+    await write_audit(db, entity_type="wbs", entity_id=wid, action="update", user=user, field_changes=upd)
+    return await db.wbs_elements.find_one({"id": wid}, {"_id": 0})
+
+
+@api.delete("/wbs/{wid}")
+async def delete_wbs(wid: str, user: dict = Depends(require_role("admin"))):
+    await db.wbs_elements.delete_one({"id": wid})
+    await write_audit(db, entity_type="wbs", entity_id=wid, action="delete", user=user)
+    return {"ok": True}
+
+
+@api.post("/wbs/bulk-upload")
+async def wbs_bulk_upload(
+    file: UploadFile = File(...),
+    mode: str = Query("append", description="append | replace"),
+    user: dict = Depends(require_role("admin")),
+):
+    if mode not in ("append", "replace"):
+        raise HTTPException(400, "mode must be 'append' or 'replace'")
+    contents = await file.read()
+    fname = (file.filename or "").lower()
+
+    rows: List[Dict[str, Any]] = []
+    try:
+        if fname.endswith(".csv"):
+            import csv
+            text = contents.decode("utf-8-sig", errors="ignore")
+            reader = csv.DictReader(io.StringIO(text))
+            for r in reader:
+                rows.append(dict(r))
+        else:
+            from openpyxl import load_workbook
+            wb = load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
+            ws = wb.active
+            headers: List[str] = []
+            for ri, row in enumerate(ws.iter_rows(values_only=True)):
+                if ri == 0:
+                    headers = [str(h or "").strip() for h in row]
+                    continue
+                rd = {headers[i]: (row[i] if i < len(row) else None) for i in range(len(headers))}
+                rows.append(rd)
+    except Exception as e:
+        raise HTTPException(400, f"Failed to parse file: {e}")
+
+    parsed: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
+    seen = set()
+    for i, raw in enumerate(rows):
+        doc: Dict[str, Any] = {}
+        for col, field in WBS_COL_TO_FIELD.items():
+            doc[field] = _coerce_wbs_value(field, raw.get(col))
+        wbs_el = doc.get("wbs_element") or ""
+        if not wbs_el:
+            failures.append({"row": i + 2, "reason": "missing WBS element"})
+            continue
+        if wbs_el in seen:
+            failures.append({"row": i + 2, "reason": f"duplicate WBS element in file: {wbs_el}"})
+            continue
+        seen.add(wbs_el)
+        doc["id"] = gen_id()
+        doc["created_at"] = now_iso()
+        doc["updated_at"] = doc["created_at"]
+        parsed.append(doc)
+
+    saved = 0
+    if mode == "replace":
+        await db.wbs_elements.delete_many({})
+        if parsed:
+            await db.wbs_elements.insert_many(parsed)
+            saved = len(parsed)
+        await write_audit(db, entity_type="wbs", entity_id="bulk", action="replace_upload",
+                          user=user, field_changes={"rows": saved})
+    else:
+        existing = {(e.get("wbs_element") or "") async for e in db.wbs_elements.find({}, {"_id": 0, "wbs_element": 1})}
+        new_rows = [r for r in parsed if r["wbs_element"] not in existing]
+        if new_rows:
+            await db.wbs_elements.insert_many(new_rows)
+            saved = len(new_rows)
+        await write_audit(db, entity_type="wbs", entity_id="bulk", action="append_upload",
+                          user=user, field_changes={"rows": saved})
+
+    return {
+        "mode": mode,
+        "total_rows": len(rows),
+        "saved": saved,
         "failed": len(failures),
         "failures": failures[:50],
     }

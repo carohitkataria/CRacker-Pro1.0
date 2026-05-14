@@ -343,12 +343,13 @@ metadata:
 
 test_plan:
   current_focus:
-    - "RolesPage frontend (CRUD custom workspace roles)"
-    - "Admin section visibility — all admin items admin-only in sidebar"
-    - "Workspace section gating via /me/permissions (Dashboard / Pipeline / Projects / Change Requests / Customer Profile / WBS)"
-    - "User Management — assign workspace role_id to a user"
-    - "Permanent admins seeded: rohit.kataria & tushar.sukhija (passwords RKataria@121 / TSukhija@121)"
-    - "Employee master matches BRD spec; bulk-upload preserves permanent admins"
+    - "Employee master: Password + Workspace Role columns; sync to /users on save"
+    - "Employee template (xlsx) includes Password + Roles headers"
+    - "Bulk-upload reads Password + Roles columns and syncs users"
+    - "User Management removed — frontend route /admin/users redirects to /employees"
+    - "Settings page with 4 tabs (Roles, Approval Matrix, Currency, Appearance) — Roles/Approval Matrix moved here"
+    - "WBS master CRUD (20 columns), template download, bulk-upload"
+    - "WBS frontend: 2 sub-tabs (Find WBS / See Budget) + 4 Excel-style filters + global search"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -640,3 +641,136 @@ frontend:
         
         **Test Results: 17/17 tests passed (100% success rate)**
         All backend features are production-ready and working as designed.
+
+backend:
+  - task: "Employee master: Password + Workspace Role columns; sync to /users on save"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 9 - Added password and workspace_role_id fields to EmployeeIn model. POST/PUT /api/employees now syncs these to /users collection. Password is write-only and never returned in EmployeeOut. EmployeeOut includes workspace_role_name, has_user_account, is_permanent_admin flags."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All functionality working perfectly. Created employee with password='Q@1qwerty' and workspace_role_id. EmployeeOut correctly shows workspace_role_id, workspace_role_name='QA Workspace Role', has_user_account=true. Password field NOT in response (secure). Login successful with created credentials. /api/auth/me returns role='finance' and correct role_id. /api/me/permissions reflects assigned role permissions (dashboard.can_view=true, can_edit=false, all others false, can_delete=false everywhere). Updated employee with new password and workspace_role_id=null - login with new password successful, permissions show default (dashboard.can_view=true only). Deleted employee - login fails as expected (user deactivated)."
+
+  - task: "Employee template (xlsx) includes Password + Roles headers"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 9 - GET /api/employees/template returns Excel with 14 BRD columns including 'Password' and 'Roles' at the end."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Template download working perfectly. GET /api/employees/template returns 200 with correct Content-Type (Excel) and Content-Disposition (employees_template.xlsx). Loaded workbook and verified all 14 headers match exactly: Employee No, Email ID, Status, Joining Date, Exit Date, Employement Type, Employee Name, Role (as per Zoho), L1 Manager, Location, Department, Sub Department, Password, Roles."
+
+  - task: "Bulk-upload reads Password + Roles columns and syncs users"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 9 - POST /api/employees/bulk-upload now reads Password and Roles columns from Excel. Resolves role name to role_id and syncs to /users collection. Permanent admin employees (rohit.kataria, tushar.sukhija) are preserved in replace mode."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All bulk upload functionality working perfectly. Created role 'Sales Viewer Bulk'. Built xlsx with 2 rows: bulk1 with password='B@1ulk111' and roles='Sales Viewer Bulk', bulk2 with password='B@2ulk222' and roles='' (empty). POST /api/employees/bulk-upload?mode=append returned saved=2, failed=0. GET /api/employees verified bulk1 has workspace_role_name='Sales Viewer Bulk' and has_user_account=true, bulk2 has has_user_account=true and workspace_role_name=None. Login as bulk1@example.com / B@1ulk111 successful, /api/me/permissions shows customer_profile.can_view=true (from role). Login as bulk2@example.com / B@2ulk222 successful. Replace mode test: uploaded tiny xlsx with 1 stub row, verified rohit.kataria and tushar.sukhija employees still exist after replace, both can login with original passwords (RKataria@121 / TSukhija@121)."
+
+  - task: "WBS master CRUD (20 columns), template download, bulk-upload"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 9 - Added WBS endpoints: GET/POST/PUT/DELETE /api/wbs, GET /api/wbs/template, POST /api/wbs/bulk-upload. WBSElementIn/Out models with all 20 BRD columns (project_definition, wbs_element, name, original_budget, total_po_value, open_po_value, balance_budget, level, acct_asst_elem_ind, company_code, currency, description, object_class, person_responsible, plant, profit_center, short_id, status, cost_center, controlling_area)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All WBS endpoints working perfectly. GET /api/wbs returns 200 with list (initially empty). GET /api/wbs/template returns 200 with Excel, verified all 20 BRD columns in exact order. POST /api/wbs created WBS with all fields persisted correctly (wbs_element='C.0050021.01', original_budget=1000000, person_responsible='Rohit Kataria'). Duplicate wbs_element blocked with 409. PUT /api/wbs/{id} updated description successfully, updated_at changed. Built xlsx with 3 WBS rows: POST /api/wbs/bulk-upload?mode=append returned saved=3, failed=0. POST with mode=replace wiped all existing and loaded 3 new rows (saved=3, failed=0). DELETE /api/wbs/{id} returned 200. All WBS rows cleaned up successfully."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.4"
+  test_sequence: 4
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "All Iteration 9 backend features tested and working"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "testing"
+    -message: |
+        ✅ ITERATION 9 BACKEND TESTING COMPLETE - ALL FEATURES WORKING PERFECTLY
+        
+        Comprehensive testing completed for all 4 Iteration 9 backend features:
+        
+        **TEST 1: Employee Master — Password + Workspace Role Sync** ✅
+        - Created custom role 'QA Workspace Role' with dashboard.can_view=true
+        - POST /api/employees with password='Q@1qwerty' and workspace_role_id: SUCCESS
+        - EmployeeOut verification: workspace_role_id matches, workspace_role_name='QA Workspace Role', has_user_account=true
+        - SECURITY: password field NOT in response (secure) ✅
+        - Login as qa.user1@example.com / Q@1qwerty: SUCCESS
+        - /api/auth/me returns role='finance', role_id matches QA role
+        - /api/me/permissions: dashboard.can_view=true, can_edit=false, all others false, can_delete=false everywhere
+        - PUT /api/employees with workspace_role_id=null and new password: SUCCESS
+        - Login with new password 'NewQ@1pass': SUCCESS
+        - Permissions show default (dashboard.can_view=true only)
+        - DELETE /api/employees: SUCCESS, login fails as expected (user deactivated)
+        
+        **TEST 2: Employee Template Download** ✅
+        - GET /api/employees/template: 200, Content-Type=Excel, Content-Disposition includes 'employees_template.xlsx'
+        - Loaded workbook: 14 columns verified
+        - Headers match exactly: Employee No, Email ID, Status, Joining Date, Exit Date, Employement Type, Employee Name, Role (as per Zoho), L1 Manager, Location, Department, Sub Department, Password, Roles
+        
+        **TEST 3: Bulk Upload Reads Password + Roles** ✅
+        - Created role 'Sales Viewer Bulk' with customer_profile.can_view=true
+        - Built xlsx with 2 rows: bulk1 (password='B@1ulk111', roles='Sales Viewer Bulk'), bulk2 (password='B@2ulk222', roles='')
+        - POST /api/employees/bulk-upload?mode=append: saved=2, failed=0
+        - GET /api/employees: bulk1 has workspace_role_name='Sales Viewer Bulk', has_user_account=true
+        - bulk2 has has_user_account=true, workspace_role_name=None
+        - Login as bulk1@example.com / B@1ulk111: SUCCESS, customer_profile.can_view=true (from role)
+        - Login as bulk2@example.com / B@2ulk222: SUCCESS
+        - Replace mode test: uploaded tiny xlsx with 1 stub row
+        - Permanent admins PRESERVED: rohit.kataria and tushar.sukhija still exist after replace
+        - Both permanent admins can login with original passwords (RKataria@121 / TSukhija@121)
+        
+        **TEST 4: WBS Endpoints** ✅
+        - GET /api/wbs: 200, returns list (initially empty)
+        - GET /api/wbs/template: 200, Excel with all 20 BRD columns in exact order:
+          Project definition, WBS element, Name, Original Budget, Total PO Value, Open PO Value, Balance Budget,
+          Level, Acct asst elem.ind., Company code, Currency, Description, Object Class, Person responsible, Plant,
+          Profit center, Short ID, Status, Cost Center, Controlling area
+        - POST /api/wbs: 200, all fields persisted (wbs_element='C.0050021.01', original_budget=1000000, person_responsible='Rohit Kataria')
+        - Duplicate wbs_element: 409 (blocked correctly)
+        - PUT /api/wbs/{id}: 200, description updated, updated_at changed
+        - POST /api/wbs/bulk-upload?mode=append: saved=3, failed=0
+        - POST /api/wbs/bulk-upload?mode=replace: saved=3, failed=0 (all old WBS wiped, 3 new loaded)
+        - DELETE /api/wbs/{id}: 200
+        
+        **TEST 5: Regression** ✅
+        - Permanent admins (rohit.kataria & tushar.sukhija) login with original passwords: SUCCESS
+        - Both have is_permanent_admin=true
+        - POST /api/admin/users/reset-password for permanent admin: 400 (blocked correctly)
+        - GET /api/me/permissions for admin: all 6 sections fully permitted (can_view=true, can_edit=true, can_delete=true)
+        
+        **Test Results: 100% Success Rate (All tests passed)**
+        
+        All Iteration 9 backend features are production-ready and working as designed. No critical issues found.
+        
+        Minor note: Test cleanup encountered expected behavior where roles cannot be deleted if assigned to any user (even inactive). This is correct data integrity protection.
+
