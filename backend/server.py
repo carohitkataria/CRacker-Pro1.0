@@ -112,25 +112,25 @@ async def on_startup():
             {"$set": {"password_hash": hash_password(admin_password)}},
         )
 
-    # Seed default approval rule(s) and sample data once
-    if await db.approval_rules.count_documents({}) == 0:
-        await db.approval_rules.insert_many([
-            {"id": gen_id(), "name": "High Value Deal P&L", "business_category": "Any",
-             "min_revenue": 50000000, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": None,
-             "target_stage": "Deal P&L", "approver_emails": [admin_email], "approver_role": "leadership",
-             "applies_to": "both",
-             "is_active": True, "created_at": now_iso()},
-            {"id": gen_id(), "name": "Low Margin Alert (Margin < 15%)", "business_category": "Any",
-             "min_revenue": None, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": 15.0,
-             "target_stage": "Customer PO", "approver_emails": [admin_email], "approver_role": "finance",
-             "applies_to": "both",
-             "is_active": True, "created_at": now_iso()},
-            {"id": gen_id(), "name": "CR Approval - Default", "business_category": "Any",
-             "min_revenue": None, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": None,
-             "target_stage": "Deal P&L", "approver_emails": [admin_email], "approver_role": "leadership",
-             "applies_to": "change_request",
-             "is_active": True, "created_at": now_iso()},
-        ])
+    # Seed default approval rule(s) and sample data once — idempotent by name
+    default_rules = [
+        {"name": "High Value Deal P&L", "business_category": "Any",
+         "min_revenue": 50000000, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": None,
+         "target_stage": "Deal P&L", "approver_emails": [admin_email], "approver_role": "leadership",
+         "applies_to": "both", "is_active": True},
+        {"name": "Low Margin Alert (Margin < 15%)", "business_category": "Any",
+         "min_revenue": None, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": 15.0,
+         "target_stage": "Customer PO", "approver_emails": [admin_email], "approver_role": "finance",
+         "applies_to": "both", "is_active": True},
+        {"name": "CR Approval - Default", "business_category": "Any",
+         "min_revenue": None, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": None,
+         "target_stage": "Deal P&L", "approver_emails": [admin_email], "approver_role": "leadership",
+         "applies_to": "change_request", "is_active": True},
+    ]
+    for rule in default_rules:
+        existing = await db.approval_rules.find_one({"name": rule["name"]})
+        if not existing:
+            await db.approval_rules.insert_one({"id": gen_id(), "created_at": now_iso(), **rule})
 
     if await db.customers.count_documents({}) == 0:
         sample_customers = [
