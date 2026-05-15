@@ -44,6 +44,17 @@ Undo last SAP import, Aviation visual identity (airplane CTA + tricolor stripe +
 - **Project Form `*` markers** on mandatory fields.
 - 16/16 pytest pipeline tests passing (`test_pipeline_iter6.py`).
 
+### Phase 4 Iteration 10 — Feb 2026 ✅ — Change Requests Wave 1 (Backend) + Wave 2 (Frontend)
+- **Dedicated `ChangeRequest` entity** (separate from Projects) with `cr_number` auto-gen, status flow (`draft → submitted → wbs_pending → wbs_approved → approved/rejected`), per-row vendor cost (single total) + resource cost lines (count/mandays/grade/amount), milestones, customer/vendor payment terms, PBG/LD details, assignees-to/CC.
+- **Approval Matrix `applies_to` field** (`project | change_request | both`) — CR auto-resolves the narrowest matching rule and stamps `approver_emails` / `approver_role` on save.
+- **Backend endpoints** — `GET/POST/PUT/DELETE /api/change-requests`, `/submit`, `/approve-wbs` (finance/admin only), `/approve`, `/reject`, `/metrics`, `/attachments` (upload customer_po/vendor_cost/resource_cost PDFs up to 25 MB).
+- **In-app notifications** — `notifications_inapp` collection + `/api/notifications/in-app` (list/count/mark-read/mark-all-read). Auto-fired on CR submit (→ finance + approvers + assignees), WBS approve (→ creator + assignees), approve/reject.
+- **Frontend** —
+  - Rebuilt `ChangeRequestsPage.jsx` with 4 metric chips (Count / PO Value / Cost / Avg Margin %), unified filter row (search + status dropdown + date range), table with approver column, status badges, and **Approve WBS** action shown to Finance/Admin on `wbs_pending` rows.
+  - New `CRFormModal.jsx` — full detailed form: CR name, airport, customer (search + inline create), WBS, Customer PO (number/value/date/period/PDF attachment), Budgeted Cost (single vendor amount + resource lines with 250 mandays/year assumption banner), live margin calculator tiles, **business-justification textarea auto-required when margin < 25 %**, payment terms, PBG/LD, milestones, assignees To/CC, **live approver preview from Approval Matrix**.
+  - `CustomerQuickAddModal.jsx` — reuses the full Customer Master field set for inline customer creation from the CR form.
+  - `NotificationBell.jsx` — topbar bell with unread badge, dropdown list, click-to-navigate, mark-all-read; polls `/api/notifications/in-app/count` every 30 s.
+
 ### Phase 4 Iteration 9 — Feb 2026 ✅ — Employee-as-User unification, Settings tabs, WBS rebuild
 - **Employee master = single source of truth for users.** Two new fields — `Password` and `Workspace Role` — are first-class columns on Employees (UI + Excel template). On create / update / bulk-upload, the employee record is mirrored into the `users` collection (system role = `admin` for permanent admins, else `finance`; workspace `role_id` is set from the chosen role). Permanent admins keep their fixed passwords regardless of input.
 - **User Management page removed.** `/admin/users` now redirects to `/employees`. Backend `/api/admin/users` is preserved for the legacy `admin@crackerpro.com` seeded user only.

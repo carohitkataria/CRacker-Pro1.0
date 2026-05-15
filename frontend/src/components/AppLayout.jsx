@@ -9,6 +9,7 @@ import {
   ShieldCheck, ClockCounterClockwise, SignOut, Wallet, UsersThree, Truck, UserCircle,
   Palette, Gear, FunnelSimple, ArrowsClockwise, CaretLeft, CaretRight, Stack, IdentificationBadge,
 } from "@phosphor-icons/react";
+import NotificationBell from "./NotificationBell";
 
 // Workspace nav — each item is gated by per-section `can_view` permission
 const NAV = [
@@ -132,6 +133,9 @@ export default function AppLayout({ children }) {
           <div className="text-xs text-[var(--muted)] tracking-overline">WAISL · Customer Order Lifecycle Management</div>
 
           <div className="flex items-center gap-3">
+            {/* In-app notifications */}
+            <NotificationBell />
+
             {/* Theme picker */}
             <div className="relative">
               <button
