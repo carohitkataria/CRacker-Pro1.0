@@ -816,7 +816,8 @@ async def employees_template(_: dict = Depends(get_current_user)):
         "Welcome@123", "Sales Viewer",
     ])
     buf = io.BytesIO()
-    wb.save(buf); buf.seek(0)
+    wb.save(buf)
+    buf.seek(0)
     return StreamingResponse(buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="employees_template.xlsx"'})
@@ -1039,7 +1040,8 @@ async def wbs_template(_: dict = Depends(get_current_user)):
         "P-INFRA-01", "SAGS-P1", "REL", "CC-INFRA-OPS", "1000",
     ])
     buf = io.BytesIO()
-    wb.save(buf); buf.seek(0)
+    wb.save(buf)
+    buf.seek(0)
     return StreamingResponse(buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="wbs_template.xlsx"'})
@@ -2588,7 +2590,8 @@ async def _resolve_cr_approver(po_value: float, margin_pct: float) -> Dict[str, 
         applicable.append(r)
     # Prefer the one with the narrowest revenue window (most specific)
     def specificity(r):
-        lo = r.get("min_revenue") or 0; hi = r.get("max_revenue") or 1e18
+        lo = r.get("min_revenue") or 0
+        hi = r.get("max_revenue") or 1e18
         return hi - lo
     applicable.sort(key=specificity)
     if not applicable:
@@ -2682,11 +2685,16 @@ async def list_change_requests(
     user: dict = Depends(get_current_user),
 ):
     q: Dict[str, Any] = {}
-    if status: q["status"] = status
-    if customer_id: q["customer_id"] = customer_id
-    if airport: q["airport_name"] = airport
-    if date_from: q["created_at"] = {**q.get("created_at", {}), "$gte": date_from}
-    if date_to: q["created_at"] = {**q.get("created_at", {}), "$lte": date_to + "T23:59:59"}
+    if status:
+        q["status"] = status
+    if customer_id:
+        q["customer_id"] = customer_id
+    if airport:
+        q["airport_name"] = airport
+    if date_from:
+        q["created_at"] = {**q.get("created_at", {}), "$gte": date_from}
+    if date_to:
+        q["created_at"] = {**q.get("created_at", {}), "$lte": date_to + "T23:59:59"}
     docs = await db.change_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return [await _enrich_cr(d) for d in docs]
 
@@ -2698,8 +2706,10 @@ async def cr_metrics(
     user: dict = Depends(get_current_user),
 ):
     q: Dict[str, Any] = {}
-    if date_from: q["created_at"] = {**q.get("created_at", {}), "$gte": date_from}
-    if date_to: q["created_at"] = {**q.get("created_at", {}), "$lte": date_to + "T23:59:59"}
+    if date_from:
+        q["created_at"] = {**q.get("created_at", {}), "$gte": date_from}
+    if date_to:
+        q["created_at"] = {**q.get("created_at", {}), "$lte": date_to + "T23:59:59"}
     docs = await db.change_requests.find(q, {"_id": 0}).to_list(5000)
     total_count = len(docs)
     total_po = sum(float(d.get("po_value") or 0) for d in docs)
@@ -2924,10 +2934,14 @@ async def delete_change_request(cid: str, user: dict = Depends(require_role("adm
         d = CR_UPLOAD_ROOT / cid
         if d.exists():
             for f in d.iterdir():
-                try: f.unlink()
-                except Exception: pass
-            try: d.rmdir()
-            except Exception: pass
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+            try:
+                d.rmdir()
+            except Exception:
+                pass
     except Exception:
         pass
     await write_audit(db, entity_type="change_request", entity_id=cid, action="delete", user=user)
