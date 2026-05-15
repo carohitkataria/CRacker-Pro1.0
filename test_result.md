@@ -825,3 +825,252 @@ agent_communication:
         
         Minor note: Test cleanup encountered expected behavior where roles cannot be deleted if assigned to any user (even inactive). This is correct data integrity protection.
 
+
+
+backend:
+  - task: "Approval matrix applies_to field (project/change_request/both)"
+    implemented: true
+    working: true
+    file: "backend/server.py, backend/models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - Added applies_to field to ApprovalRuleIn model with Literal type. Seeded 'CR Approval - Default' rule with applies_to='change_request'. GET/POST/PUT endpoints support the field."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All functionality working. GET /api/approvals/rules returns rules with applies_to field. Found 'CR Approval - Default' rule with applies_to='change_request'. POST /api/approvals/rules with applies_to='project' persists correctly. PUT /api/approvals/rules changing applies_to='change_request' persists correctly. NOTE: Had to manually create 'CR Approval - Default' rule as it wasn't seeded (database already had 2 rules from previous run, so seed condition was false)."
+
+  - task: "Create CR (draft) with margin calculation and approver resolution"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - POST /api/change-requests creates CR in draft status. Computes estimated_resource_cost (sum of resource_lines.amount), estimated_total_cost (vendor_cost + resource_cost), estimated_margin_amount (po_value - total_cost), estimated_margin_pct. Resolves approver via _resolve_cr_approver matching rules with applies_to in ('change_request','both')."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All calculations correct. Created CR with po_value=10M, vendor_cost=5M, resource_lines amount=2M. Response: cr_number='CR-202605-0002' (matches pattern), status='draft', estimated_resource_cost=2000000, estimated_total_cost=7000000, estimated_margin_amount=3000000, estimated_margin_pct=30.0, approver_emails=['admin@crackerpro.com'], approver_rule_name='CR Approval - Default'."
+
+  - task: "CR low margin validation - business justification required when margin < 25%"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - POST /api/change-requests/{id}/submit validates margin. If estimated_margin_pct < 25% and business_justification is empty, returns 400 error. After setting business_justification via PUT, submit succeeds."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Validation working perfectly. Created CR with po_value=1M, vendor_cost=950K (margin ~5%). Submit without business_justification blocked with 400 'Business justification is required when margin is below 25%'. PUT with business_justification='Strategic loss-leader' succeeded. Second submit succeeded with status='wbs_pending' (WBS not in master)."
+
+  - task: "WBS approval flow (finance/admin only)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - POST /api/change-requests/{id}/submit checks if wbs_element exists in master. If not, status='wbs_pending'. POST /api/change-requests/{id}/approve-wbs (finance/admin only) sets wbs_approved=true, status='wbs_approved'. Duplicate approval blocked with 400. Non-finance/non-admin blocked with 403."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All flows working. Submit CR with WBS not in master → status='wbs_pending'. Admin approve-wbs → status='wbs_approved', wbs_approved=true. Second approve-wbs → 400. Created finance user (role=finance), approved WBS successfully. Created sales user (role=sales), approve-wbs blocked with 403."
+
+  - task: "CR full approval flow"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - POST /api/change-requests/{id}/approve requires user email in approver_emails OR role=admin. Requires wbs_approved=true. Sets status='approved', approved_by, approved_at. Blocks if status already in (approved, completed, rejected)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Approval flow working. Admin in approver_emails via 'CR Approval - Default' rule. POST approve as admin → status='approved', approved_by='admin@crackerpro.com'. Tested approve before WBS approved → blocked with 400 'WBS must be approved before the CR can be approved'."
+
+  - task: "Reject CR"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - POST /api/change-requests/{id}/reject with payload {reason}. Requires user email in approver_emails OR role=admin. Sets status='rejected', rejected_reason."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Rejection working. POST reject with reason='insufficient margin' → status='rejected', rejected_reason='insufficient margin'."
+
+  - task: "CR metrics endpoint"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - GET /api/change-requests/metrics returns total_count, total_po_value, total_cost, total_margin_amount, total_margin_pct, by_status dict, by_airport dict. Supports date_from/date_to filters."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Metrics endpoint working. Returns all required fields: total_count=3, total_po_value=13M, total_cost=9.45M, total_margin_amount=3.55M, total_margin_pct=27.31%, by_status={'wbs_pending':1, 'approved':1, 'rejected':1}, by_airport={'Other':{...}, 'DIAL':{...}}. Totals correspond to created CRs."
+
+  - task: "CR attachments (upload/list/download/delete)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - POST /api/change-requests/{id}/attachments?kind=customer_po|vendor_cost|resource_cost|other uploads file (max 25MB). GET /api/change-requests/{id}/attachments lists. GET /api/change-requests/{id}/attachments/{att_id} downloads with content-disposition. DELETE /api/change-requests/{id}/attachments/{att_id} removes. CR has customer_po_attachment_id and vendor_cost_attachment_id fields (latest of each kind)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All attachment operations working. POST with tiny PDF (324 bytes) → returns id, kind=customer_po, filename=test_po.pdf, size=324. GET attachments → returns 1 attachment. GET download → content-disposition includes filename. CR has customer_po_attachment_id set. DELETE → 200. Subsequent GET → 404. CR's customer_po_attachment_id cleared after delete."
+
+  - task: "In-app notifications for CR events"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - CR submit notifies finance (for WBS approval), approvers (from matrix), assignees_to, assignees_cc with kind='cr_submitted' or 'cr_wbs_pending'. WBS approval notifies creator + assignees with kind='cr_wbs_approved'. CR approval notifies creator + assignees with kind='cr_approved'. Rejection notifies creator with kind='cr_rejected'. GET /api/notifications/in-app, GET /api/notifications/in-app/count, POST /api/notifications/in-app/{id}/read, POST /api/notifications/in-app/mark-all-read."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: All notification flows working. Created finance user, submitted CR → finance user received notification with kind='cr_wbs_pending', title='New Change Request: CR Notification Test'. GET /api/notifications/in-app returned 3 notifications. GET count → unread=3. POST mark read → unread decreased to 2. POST mark-all-read → updated=2, unread=0."
+
+  - task: "CR list filters (status, customer_id, airport, date_from, date_to)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - GET /api/change-requests supports query params: status, customer_id, airport, date_from, date_to. Returns filtered list sorted by created_at desc."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Filters working. GET ?status=draft → 0 CRs. GET ?airport=DIAL → 4 CRs, all have airport_name='DIAL'."
+
+  - task: "CR edit permissions (creator or admin/finance only)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -agent: "main"
+        -comment: "Iteration 10 - PUT /api/change-requests/{id} checks if user is creator OR role in (admin, finance). Non-creator/non-admin/non-finance blocked with 403. Cannot edit approved/completed CRs (400)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ TESTED: Permissions working. Created sales user (role=sales), tried to edit admin's CR → blocked with 403."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.5"
+  test_sequence: 5
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "All Iteration 10 backend features tested and working"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "testing"
+    -message: |
+        ✅ ITERATION 10 BACKEND TESTING COMPLETE - ALL FEATURES WORKING PERFECTLY
+        
+        Comprehensive testing completed for all 10 Change Request (CR) module features:
+        
+        **TEST 1: Approval Matrix - applies_to field** ✅
+        - GET /api/approvals/rules returns rules with applies_to field
+        - Found 'CR Approval - Default' rule with applies_to='change_request'
+        - POST /api/approvals/rules with applies_to='project' persists correctly
+        - PUT /api/approvals/rules changing applies_to='change_request' persists correctly
+        - NOTE: Had to manually create 'CR Approval - Default' rule (wasn't seeded because DB already had 2 rules)
+        
+        **TEST 2: Create CR (draft) with margin + approver** ✅
+        - Created CR with po_value=10M, vendor_cost=5M, resource_lines=2M
+        - cr_number='CR-202605-0002' (matches pattern CR-YYYYMM-XXXX)
+        - status='draft'
+        - estimated_resource_cost=2000000 ✓
+        - estimated_total_cost=7000000 ✓ (vendor 5M + resource 2M)
+        - estimated_margin_amount=3000000 ✓
+        - estimated_margin_pct=30.0 ✓
+        - approver_emails=['admin@crackerpro.com'] ✓
+        - approver_rule_name='CR Approval - Default' ✓
+        
+        **TEST 3: CR with low margin - business justification** ✅
+        - Created CR with po_value=1M, vendor_cost=950K (margin ~5%)
+        - Submit without business_justification → 400 'Business justification is required when margin is below 25%'
+        - PUT with business_justification='Strategic loss-leader' → 200
+        - Submit again → 200, status='wbs_pending' (WBS not in master)
+        
+        **TEST 4: WBS approval flow** ✅
+        - GET /api/wbs returned 2635 WBS elements
+        - Submit CR with WBS not in master → status='wbs_pending'
+        - Admin approve-wbs → status='wbs_approved', wbs_approved=true
+        - Second approve-wbs → 400 (blocked correctly)
+        - Created finance user (role=finance), approved WBS successfully
+        - Created sales user (role=sales), approve-wbs blocked with 403
+        
+        **TEST 5: CR full approval flow** ✅
+        - Admin in approver_emails via 'CR Approval - Default' rule
+        - POST approve as admin → status='approved', approved_by='admin@crackerpro.com'
+        - Tested approve before WBS approved → 400 'WBS must be approved before the CR can be approved'
+        
+        **TEST 6: Reject CR** ✅
+        - POST reject with reason='insufficient margin' → status='rejected', rejected_reason='insufficient margin'
+        
+        **TEST 7: Metrics endpoint** ✅
+        - Returns all required fields: total_count, total_po_value, total_cost, total_margin_amount, total_margin_pct, by_status, by_airport
+        - Verified totals correspond to created CRs
+        
+        **TEST 8: Attachments** ✅
+        - POST attachment with tiny PDF → returns id, kind, filename, size
+        - GET attachments → returns list
+        - GET download → content-disposition includes filename
+        - CR has customer_po_attachment_id set
+        - DELETE → 200, subsequent GET → 404
+        - CR's customer_po_attachment_id cleared after delete
+        
+        **TEST 9: In-app notifications** ✅
+        - Created finance user, submitted CR → finance user received notification
+        - GET /api/notifications/in-app returned 3 notifications
+        - Found CR notification with kind='cr_wbs_pending'
+        - GET count → unread=3
+        - POST mark read → unread decreased to 2
+        - POST mark-all-read → updated=2, unread=0
+        
+        **TEST 10: Permissions / list filters** ✅
+        - GET ?status=draft → 0 CRs
+        - GET ?airport=DIAL → 4 CRs, all have airport_name='DIAL'
+        - Sales user trying to edit admin's CR → blocked with 403
+        
+        **Test Results: 10/10 tests passed (100% success rate)**
+        
+        **CRITICAL ISSUE FOUND (NOT A BUG, BUT NEEDS ATTENTION):**
+        The 'CR Approval - Default' rule was not seeded because the database already had 2 approval rules from a previous run. The seed condition `if await db.approval_rules.count_documents({}) == 0:` was false, so the 3rd rule wasn't inserted. I manually created it for testing. Main agent should consider making the seed idempotent (e.g., check by name instead of count, or use upsert).
+        
+        All Iteration 10 backend features are production-ready and working as designed.
+

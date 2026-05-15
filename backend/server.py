@@ -29,6 +29,8 @@ from models import (
     PipelineIn, PipelineOut, PipelineStageIn, PipelineHandoffAction, PIPELINE_STAGES,
     RoleIn, RoleOut, WORKSPACE_SECTIONS,
     WBSElementIn, WBSElementOut,
+    ChangeRequestIn, ChangeRequestOut, CRAttachmentOut, CR_AIRPORTS,
+    InAppNotificationOut,
 )
 from services import (
     can_transition, write_audit, compute_margin, find_matching_rule, create_approval_request,
@@ -116,10 +118,17 @@ async def on_startup():
             {"id": gen_id(), "name": "High Value Deal P&L", "business_category": "Any",
              "min_revenue": 50000000, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": None,
              "target_stage": "Deal P&L", "approver_emails": [admin_email], "approver_role": "leadership",
+             "applies_to": "both",
              "is_active": True, "created_at": now_iso()},
             {"id": gen_id(), "name": "Low Margin Alert (Margin < 15%)", "business_category": "Any",
              "min_revenue": None, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": 15.0,
              "target_stage": "Customer PO", "approver_emails": [admin_email], "approver_role": "finance",
+             "applies_to": "both",
+             "is_active": True, "created_at": now_iso()},
+            {"id": gen_id(), "name": "CR Approval - Default", "business_category": "Any",
+             "min_revenue": None, "max_revenue": None, "min_margin_pct": None, "max_margin_pct": None,
+             "target_stage": "Deal P&L", "approver_emails": [admin_email], "approver_role": "leadership",
+             "applies_to": "change_request",
              "is_active": True, "created_at": now_iso()},
         ])
 
@@ -2536,6 +2545,495 @@ async def notifications_test(payload: dict = None, user: dict = Depends(require_
     subject, html = tpl_test_email()
     result = await mailer.send(subject=subject, html_body=html, to_recipients=to)
     return result
+
+
+# ============================================================
+# CHANGE REQUESTS (Iter 10 — dedicated entity)
+# ============================================================
+CR_UPLOAD_ROOT = Path(os.environ.get("CR_UPLOAD_ROOT", "/app/backend/uploads/cr"))
+CR_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _compute_cr_costs_margin(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute resource cost, total cost, margin pct & amount. Pure function."""
+    res = sum(float(line.get("amount") or 0) for line in (doc.get("resource_lines") or []))
+    total = float(doc.get("vendor_cost") or 0) + res
+    po = float(doc.get("po_value") or 0)
+    margin_amt = po - total
+    margin_pct = (margin_amt / po * 100.0) if po > 0 else 0.0
+    return {
+        "estimated_resource_cost": round(res, 2),
+        "estimated_total_cost": round(total, 2),
+        "estimated_margin_amount": round(margin_amt, 2),
+        "estimated_margin_pct": round(margin_pct, 4),
+    }
+
+
+async def _resolve_cr_approver(po_value: float, margin_pct: float) -> Dict[str, Any]:
+    """Match the CR against active approval rules where applies_to in ('change_request','both')."""
+    rules = await db.approval_rules.find({"is_active": True}, {"_id": 0}).to_list(500)
+    applicable = []
+    for r in rules:
+        at = (r.get("applies_to") or "both").lower()
+        if at not in ("change_request", "both"):
+            continue
+        if r.get("min_revenue") is not None and po_value < float(r["min_revenue"]):
+            continue
+        if r.get("max_revenue") is not None and po_value > float(r["max_revenue"]):
+            continue
+        if r.get("min_margin_pct") is not None and margin_pct < float(r["min_margin_pct"]):
+            continue
+        if r.get("max_margin_pct") is not None and margin_pct > float(r["max_margin_pct"]):
+            continue
+        applicable.append(r)
+    # Prefer the one with the narrowest revenue window (most specific)
+    def specificity(r):
+        lo = r.get("min_revenue") or 0; hi = r.get("max_revenue") or 1e18
+        return hi - lo
+    applicable.sort(key=specificity)
+    if not applicable:
+        return {"approver_emails": [], "approver_role": None, "approver_rule_name": None}
+    chosen = applicable[0]
+    return {
+        "approver_emails": chosen.get("approver_emails") or [],
+        "approver_role": chosen.get("approver_role"),
+        "approver_rule_name": chosen.get("name"),
+    }
+
+
+async def _generate_cr_number() -> str:
+    yymm = datetime.now(timezone.utc).strftime("%Y%m")
+    prefix = f"CR-{yymm}-"
+    count = await db.change_requests.count_documents({"cr_number": {"$regex": f"^{prefix}"}})
+    return f"{prefix}{(count + 1):04d}"
+
+
+async def _employee_for_user(user_id: str) -> Optional[Dict[str, Any]]:
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "email": 1})
+    if not u:
+        return None
+    return await db.employees.find_one({"email_id": u["email"]}, {"_id": 0})
+
+
+async def _enrich_cr(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+    doc.pop("_id", None)
+    counts = await db.cr_attachments.count_documents({"cr_id": doc.get("id")})
+    doc["attachment_count"] = counts
+    # latest customer_po / vendor_cost attachment ids
+    po_att = await db.cr_attachments.find_one({"cr_id": doc.get("id"), "kind": "customer_po"}, sort=[("uploaded_at", -1)])
+    vc_att = await db.cr_attachments.find_one({"cr_id": doc.get("id"), "kind": "vendor_cost"}, sort=[("uploaded_at", -1)])
+    doc["customer_po_attachment_id"] = po_att["id"] if po_att else None
+    doc["vendor_cost_attachment_id"] = vc_att["id"] if vc_att else None
+    return doc
+
+
+async def _notify_in_app(user_ids: List[str], kind: str, title: str, body: Optional[str] = None, link: Optional[str] = None) -> None:
+    if not user_ids:
+        return
+    docs = []
+    for uid in user_ids:
+        if not uid:
+            continue
+        docs.append({
+            "id": gen_id(),
+            "user_id": uid,
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "link": link,
+            "read": False,
+            "created_at": now_iso(),
+        })
+    if docs:
+        await db.notifications_inapp.insert_many(docs)
+
+
+async def _resolve_user_ids_for_emails(emails: List[str]) -> List[str]:
+    if not emails:
+        return []
+    users = await db.users.find({"email": {"$in": [e.lower() for e in emails]}}, {"_id": 0, "id": 1}).to_list(500)
+    return [u["id"] for u in users]
+
+
+async def _resolve_user_ids_for_employees(employee_ids: List[str]) -> List[str]:
+    if not employee_ids:
+        return []
+    emps = await db.employees.find({"id": {"$in": employee_ids}}, {"_id": 0, "email_id": 1}).to_list(500)
+    emails = [(e.get("email_id") or "").lower() for e in emps if e.get("email_id")]
+    return await _resolve_user_ids_for_emails(emails)
+
+
+async def _resolve_user_ids_by_role(role: Optional[str]) -> List[str]:
+    if not role:
+        return []
+    users = await db.users.find({"role": role, "is_active": True}, {"_id": 0, "id": 1}).to_list(500)
+    return [u["id"] for u in users]
+
+
+@api.get("/change-requests", response_model=List[ChangeRequestOut])
+async def list_change_requests(
+    status: Optional[str] = Query(None),
+    customer_id: Optional[str] = Query(None),
+    airport: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    q: Dict[str, Any] = {}
+    if status: q["status"] = status
+    if customer_id: q["customer_id"] = customer_id
+    if airport: q["airport_name"] = airport
+    if date_from: q["created_at"] = {**q.get("created_at", {}), "$gte": date_from}
+    if date_to: q["created_at"] = {**q.get("created_at", {}), "$lte": date_to + "T23:59:59"}
+    docs = await db.change_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    return [await _enrich_cr(d) for d in docs]
+
+
+@api.get("/change-requests/metrics")
+async def cr_metrics(
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    q: Dict[str, Any] = {}
+    if date_from: q["created_at"] = {**q.get("created_at", {}), "$gte": date_from}
+    if date_to: q["created_at"] = {**q.get("created_at", {}), "$lte": date_to + "T23:59:59"}
+    docs = await db.change_requests.find(q, {"_id": 0}).to_list(5000)
+    total_count = len(docs)
+    total_po = sum(float(d.get("po_value") or 0) for d in docs)
+    total_cost = sum(float(d.get("estimated_total_cost") or 0) for d in docs)
+    margin_amt = total_po - total_cost
+    margin_pct = (margin_amt / total_po * 100.0) if total_po > 0 else 0.0
+    by_status: Dict[str, int] = {}
+    by_airport: Dict[str, Dict[str, float]] = {}
+    for d in docs:
+        s = d.get("status") or "draft"
+        by_status[s] = by_status.get(s, 0) + 1
+        ap = d.get("airport_name") or "Other"
+        bp = by_airport.setdefault(ap, {"count": 0, "po_value": 0.0, "cost": 0.0})
+        bp["count"] += 1
+        bp["po_value"] += float(d.get("po_value") or 0)
+        bp["cost"] += float(d.get("estimated_total_cost") or 0)
+    return {
+        "total_count": total_count,
+        "total_po_value": round(total_po, 2),
+        "total_cost": round(total_cost, 2),
+        "total_margin_amount": round(margin_amt, 2),
+        "total_margin_pct": round(margin_pct, 4),
+        "by_status": by_status,
+        "by_airport": by_airport,
+    }
+
+
+@api.get("/change-requests/{cid}", response_model=ChangeRequestOut)
+async def get_change_request(cid: str, user: dict = Depends(get_current_user)):
+    doc = await db.change_requests.find_one({"id": cid}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Change request not found")
+    return await _enrich_cr(doc)
+
+
+@api.post("/change-requests", response_model=ChangeRequestOut)
+async def create_change_request(payload: ChangeRequestIn, user: dict = Depends(get_current_user)):
+    """Create a CR in DRAFT status. Submission happens via /submit endpoint."""
+    doc = payload.model_dump()
+    # Compute cost/margin and resolve approver
+    doc.update(_compute_cr_costs_margin(doc))
+    appr = await _resolve_cr_approver(doc["po_value"], doc["estimated_margin_pct"])
+    doc.update(appr)
+    # Identity from employee master
+    emp = await _employee_for_user(user["id"])
+    doc["created_by_user_id"] = user["id"]
+    doc["created_by_name"] = (emp or {}).get("employee_name") or user.get("name") or user.get("email")
+    doc["created_by_employee_no"] = (emp or {}).get("employee_no")
+    doc["id"] = gen_id()
+    doc["cr_number"] = await _generate_cr_number()
+    doc["status"] = "draft"
+    doc["created_at"] = now_iso()
+    doc["updated_at"] = doc["created_at"]
+    await db.change_requests.insert_one(doc)
+    await write_audit(db, entity_type="change_request", entity_id=doc["id"], action="create", user=user,
+                      field_changes={"cr_number": doc["cr_number"], "po_value": doc["po_value"]})
+    return await _enrich_cr(doc)
+
+
+@api.put("/change-requests/{cid}", response_model=ChangeRequestOut)
+async def update_change_request(cid: str, payload: ChangeRequestIn, user: dict = Depends(get_current_user)):
+    existing = await db.change_requests.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    # Only creator or admin/finance can edit
+    if (existing.get("created_by_user_id") != user["id"]
+            and user.get("role") not in ("admin", "finance")):
+        raise HTTPException(403, "Only the creator (or admin/finance) can edit this CR")
+    if existing.get("status") in ("approved", "completed"):
+        raise HTTPException(400, "Cannot edit an approved or completed CR")
+    upd = payload.model_dump()
+    upd.update(_compute_cr_costs_margin(upd))
+    appr = await _resolve_cr_approver(upd["po_value"], upd["estimated_margin_pct"])
+    upd.update(appr)
+    upd["updated_at"] = now_iso()
+    await db.change_requests.update_one({"id": cid}, {"$set": upd})
+    await write_audit(db, entity_type="change_request", entity_id=cid, action="update", user=user, field_changes={"po_value": upd["po_value"]})
+    return await _enrich_cr(await db.change_requests.find_one({"id": cid}, {"_id": 0}))
+
+
+@api.post("/change-requests/{cid}/submit", response_model=ChangeRequestOut)
+async def submit_change_request(cid: str, user: dict = Depends(get_current_user)):
+    existing = await db.change_requests.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if existing.get("created_by_user_id") != user["id"] and user.get("role") not in ("admin", "finance"):
+        raise HTTPException(403, "Only the creator can submit this CR")
+    if existing.get("status") != "draft":
+        raise HTTPException(400, f"CR is already in status '{existing.get('status')}'")
+    # Validation: business justification required if margin < 25%
+    if float(existing.get("estimated_margin_pct") or 0) < 25.0 and not (existing.get("business_justification") or "").strip():
+        raise HTTPException(400, "Business justification is required when margin is below 25%")
+    # Resolve the WBS state — does this WBS already exist in master?
+    wbs_exists = await db.wbs_elements.find_one({"wbs_element": existing.get("wbs_element")}, {"_id": 0, "id": 1})
+    new_status = "wbs_approved" if wbs_exists else "wbs_pending"
+    now = now_iso()
+    await db.change_requests.update_one({"id": cid}, {"$set": {
+        "status": new_status,
+        "submitted_at": now,
+        "wbs_approved": bool(wbs_exists),
+        "updated_at": now,
+    }})
+    # Notifications
+    notif_targets: List[str] = []
+    # Finance (always notified to approve WBS if not yet in master)
+    finance_uids = await _resolve_user_ids_by_role("finance")
+    notif_targets.extend(finance_uids)
+    # Approver (matrix)
+    appr_uids = await _resolve_user_ids_for_emails(existing.get("approver_emails") or [])
+    notif_targets.extend(appr_uids)
+    # Assignees To & CC
+    asg_to_uids = await _resolve_user_ids_for_employees(existing.get("assignees_to") or [])
+    asg_cc_uids = await _resolve_user_ids_for_employees(existing.get("assignees_cc") or [])
+    notif_targets.extend(asg_to_uids + asg_cc_uids)
+    notif_targets = list({u for u in notif_targets if u and u != user["id"]})
+    await _notify_in_app(
+        notif_targets,
+        kind="cr_submitted" if wbs_exists else "cr_wbs_pending",
+        title=f"New Change Request: {existing.get('cr_name')}",
+        body=f"CR {existing.get('cr_number')} submitted by {existing.get('created_by_name')}. PO value: {existing.get('po_value')}. {'WBS already approved.' if wbs_exists else 'Awaiting WBS approval by Finance.'}",
+        link=f"/change-requests/{cid}",
+    )
+    await write_audit(db, entity_type="change_request", entity_id=cid, action="submit", user=user,
+                      field_changes={"new_status": new_status})
+    return await _enrich_cr(await db.change_requests.find_one({"id": cid}, {"_id": 0}))
+
+
+@api.post("/change-requests/{cid}/approve-wbs", response_model=ChangeRequestOut)
+async def approve_wbs(cid: str, user: dict = Depends(get_current_user)):
+    if user.get("role") not in ("admin", "finance"):
+        raise HTTPException(403, "Only Finance or Admin can approve WBS")
+    existing = await db.change_requests.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    if existing.get("wbs_approved"):
+        raise HTTPException(400, "WBS already approved for this CR")
+    now = now_iso()
+    next_status = "wbs_approved"
+    await db.change_requests.update_one({"id": cid}, {"$set": {
+        "wbs_approved": True,
+        "wbs_approved_by": user["email"],
+        "wbs_approved_at": now,
+        "status": next_status,
+        "updated_at": now,
+    }})
+    # Notify creator + assignees
+    targets: List[str] = []
+    if existing.get("created_by_user_id"):
+        targets.append(existing["created_by_user_id"])
+    targets.extend(await _resolve_user_ids_for_employees(existing.get("assignees_to") or []))
+    targets.extend(await _resolve_user_ids_for_employees(existing.get("assignees_cc") or []))
+    targets = list({u for u in targets if u})
+    await _notify_in_app(
+        targets, kind="cr_wbs_approved",
+        title=f"WBS approved: {existing.get('cr_name')}",
+        body=f"WBS code {existing.get('wbs_element')} for CR {existing.get('cr_number')} has been approved by {user['email']}.",
+        link=f"/change-requests/{cid}",
+    )
+    await write_audit(db, entity_type="change_request", entity_id=cid, action="approve_wbs", user=user)
+    return await _enrich_cr(await db.change_requests.find_one({"id": cid}, {"_id": 0}))
+
+
+@api.post("/change-requests/{cid}/approve", response_model=ChangeRequestOut)
+async def approve_cr(cid: str, payload: Optional[dict] = None, user: dict = Depends(get_current_user)):
+    existing = await db.change_requests.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    # Allow approver in matrix or admin
+    approver_emails = [e.lower() for e in (existing.get("approver_emails") or [])]
+    if user["email"].lower() not in approver_emails and user.get("role") != "admin":
+        raise HTTPException(403, "You are not the designated approver for this CR")
+    if not existing.get("wbs_approved"):
+        raise HTTPException(400, "WBS must be approved before the CR can be approved")
+    if existing.get("status") in ("approved", "completed", "rejected"):
+        raise HTTPException(400, f"CR is in terminal status '{existing.get('status')}'")
+    now = now_iso()
+    await db.change_requests.update_one({"id": cid}, {"$set": {
+        "status": "approved", "approved_by": user["email"], "approved_at": now, "updated_at": now,
+    }})
+    targets: List[str] = []
+    if existing.get("created_by_user_id"):
+        targets.append(existing["created_by_user_id"])
+    targets.extend(await _resolve_user_ids_for_employees(existing.get("assignees_to") or []))
+    targets.extend(await _resolve_user_ids_for_employees(existing.get("assignees_cc") or []))
+    await _notify_in_app(list({u for u in targets if u}), kind="cr_approved",
+        title=f"CR Approved: {existing.get('cr_name')}",
+        body=f"{existing.get('cr_number')} approved by {user['email']}.",
+        link=f"/change-requests/{cid}")
+    await write_audit(db, entity_type="change_request", entity_id=cid, action="approve", user=user)
+    return await _enrich_cr(await db.change_requests.find_one({"id": cid}, {"_id": 0}))
+
+
+@api.post("/change-requests/{cid}/reject", response_model=ChangeRequestOut)
+async def reject_cr(cid: str, payload: dict, user: dict = Depends(get_current_user)):
+    existing = await db.change_requests.find_one({"id": cid})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    reason = (payload or {}).get("reason", "")
+    approver_emails = [e.lower() for e in (existing.get("approver_emails") or [])]
+    if user["email"].lower() not in approver_emails and user.get("role") != "admin":
+        raise HTTPException(403, "You are not the designated approver for this CR")
+    now = now_iso()
+    await db.change_requests.update_one({"id": cid}, {"$set": {
+        "status": "rejected", "rejected_reason": reason, "updated_at": now,
+    }})
+    targets = [existing.get("created_by_user_id")] if existing.get("created_by_user_id") else []
+    await _notify_in_app([u for u in targets if u], kind="cr_rejected",
+        title=f"CR Rejected: {existing.get('cr_name')}",
+        body=f"{existing.get('cr_number')} rejected by {user['email']}. Reason: {reason}",
+        link=f"/change-requests/{cid}")
+    await write_audit(db, entity_type="change_request", entity_id=cid, action="reject", user=user, field_changes={"reason": reason})
+    return await _enrich_cr(await db.change_requests.find_one({"id": cid}, {"_id": 0}))
+
+
+@api.delete("/change-requests/{cid}")
+async def delete_change_request(cid: str, user: dict = Depends(require_role("admin"))):
+    """Hard-delete a CR — admin only."""
+    await db.change_requests.delete_one({"id": cid})
+    await db.cr_attachments.delete_many({"cr_id": cid})
+    # remove disk files
+    try:
+        d = CR_UPLOAD_ROOT / cid
+        if d.exists():
+            for f in d.iterdir():
+                try: f.unlink()
+                except Exception: pass
+            try: d.rmdir()
+            except Exception: pass
+    except Exception:
+        pass
+    await write_audit(db, entity_type="change_request", entity_id=cid, action="delete", user=user)
+    return {"ok": True}
+
+
+# ---------- CR Attachments ----------
+@api.get("/change-requests/{cid}/attachments", response_model=List[CRAttachmentOut])
+async def list_cr_attachments(cid: str, user: dict = Depends(get_current_user)):
+    return await db.cr_attachments.find({"cr_id": cid}, {"_id": 0, "cr_id": 0}).sort("uploaded_at", -1).to_list(200)
+
+
+@api.post("/change-requests/{cid}/attachments")
+async def upload_cr_attachment(
+    cid: str,
+    file: UploadFile = File(...),
+    kind: str = Query("other", description="customer_po | vendor_cost | resource_cost | other"),
+    user: dict = Depends(get_current_user),
+):
+    if kind not in ("customer_po", "vendor_cost", "resource_cost", "other"):
+        raise HTTPException(400, "Invalid kind")
+    cr = await db.change_requests.find_one({"id": cid}, {"_id": 0, "id": 1, "created_by_user_id": 1})
+    if not cr:
+        raise HTTPException(404, "CR not found")
+    contents = await file.read()
+    if len(contents) > 25 * 1024 * 1024:
+        raise HTTPException(413, "File too large (max 25 MB)")
+    folder = CR_UPLOAD_ROOT / cid
+    folder.mkdir(parents=True, exist_ok=True)
+    att_id = gen_id()
+    safe_name = (file.filename or "file").replace("/", "_").replace("\\", "_")
+    dest = folder / f"{att_id}_{safe_name}"
+    with open(dest, "wb") as f:
+        f.write(contents)
+    rec = {
+        "id": att_id, "cr_id": cid, "kind": kind,
+        "filename": safe_name, "size": len(contents),
+        "mime": file.content_type,
+        "uploaded_by": user["email"], "uploaded_at": now_iso(),
+        "_path": str(dest),
+    }
+    await db.cr_attachments.insert_one(rec)
+    return {"id": att_id, "kind": kind, "filename": safe_name, "size": len(contents)}
+
+
+@api.get("/change-requests/{cid}/attachments/{att_id}")
+async def download_cr_attachment(cid: str, att_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.cr_attachments.find_one({"id": att_id, "cr_id": cid}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Attachment not found")
+    path = rec.get("_path")
+    if not path or not Path(path).exists():
+        raise HTTPException(404, "File missing on disk")
+    return StreamingResponse(open(path, "rb"),
+        media_type=rec.get("mime") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{rec.get("filename")}"'})
+
+
+@api.delete("/change-requests/{cid}/attachments/{att_id}")
+async def delete_cr_attachment(cid: str, att_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.cr_attachments.find_one({"id": att_id, "cr_id": cid}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Attachment not found")
+    try:
+        p = rec.get("_path")
+        if p and Path(p).exists():
+            Path(p).unlink()
+    except Exception:
+        pass
+    await db.cr_attachments.delete_one({"id": att_id, "cr_id": cid})
+    return {"ok": True}
+
+
+# ============================================================
+# IN-APP NOTIFICATIONS (bell icon)
+# ============================================================
+@api.get("/notifications/in-app", response_model=List[InAppNotificationOut])
+async def list_in_app_notifications(
+    unread_only: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(get_current_user),
+):
+    q: Dict[str, Any] = {"user_id": user["id"]}
+    if unread_only:
+        q["read"] = False
+    return await db.notifications_inapp.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
+
+
+@api.get("/notifications/in-app/count")
+async def in_app_notifications_count(user: dict = Depends(get_current_user)):
+    unread = await db.notifications_inapp.count_documents({"user_id": user["id"], "read": False})
+    return {"unread": unread}
+
+
+@api.post("/notifications/in-app/{nid}/read")
+async def mark_in_app_notification_read(nid: str, user: dict = Depends(get_current_user)):
+    r = await db.notifications_inapp.update_one({"id": nid, "user_id": user["id"]}, {"$set": {"read": True}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
+@api.post("/notifications/in-app/mark-all-read")
+async def mark_all_in_app_notifications_read(user: dict = Depends(get_current_user)):
+    r = await db.notifications_inapp.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True}})
+    return {"updated": r.modified_count}
 
 
 # Register router & CORS

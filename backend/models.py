@@ -317,6 +317,7 @@ class ApprovalRuleIn(BaseModel):
     target_stage: Optional[str] = None  # which stage triggers
     approver_emails: List[str] = []
     approver_role: Optional[str] = None
+    applies_to: Literal["project", "change_request", "both"] = "both"  # NEW Iter 10
     is_active: bool = True
 
 
@@ -554,3 +555,117 @@ class WBSElementOut(WBSElementIn):
     id: str
     created_at: str
     updated_at: Optional[str] = None
+
+
+
+# ============================================================
+# CHANGE REQUEST  (dedicated entity — separate from Projects)
+# ============================================================
+CR_STATUS = Literal[
+    "draft", "submitted", "wbs_pending", "wbs_approved",
+    "approved", "rejected", "completed",
+]
+
+CR_AIRPORTS = ["DIAL", "GHIAL", "GGIAL", "GVIAL", "Other"]
+
+
+class CRResourceLine(BaseModel):
+    resource_count: int = 1
+    mandays: float = 0.0   # 0 allowed; assumption banner in UI: 250 mandays/year
+    grade: Optional[str] = None
+    amount: float = 0.0    # mandatory (>= 0)
+    free_text: Optional[str] = None
+
+
+class CRMilestone(BaseModel):
+    date: Optional[str] = None        # ISO or DD-MM-YYYY
+    billing_amount: float = 0.0
+    notes: Optional[str] = None
+
+
+class ChangeRequestIn(BaseModel):
+    cr_name: str
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    airport_name: Optional[str] = None     # DIAL / GHIAL / GGIAL / GVIAL / Other
+    wbs_element: str                       # WSIN required
+    # Customer PO
+    po_received: bool = False
+    customer_po_number: Optional[str] = None
+    po_value: float = 0.0
+    po_issue_date: Optional[str] = None
+    po_from_date: Optional[str] = None
+    po_to_date: Optional[str] = None
+    # Budgeted cost
+    vendor_cost: float = 0.0
+    vendor_cost_remarks: Optional[str] = None
+    resource_lines: List[CRResourceLine] = []
+    resource_cost_remarks: Optional[str] = None
+    # Justification when margin < 25%
+    business_justification: Optional[str] = None
+    # Payment terms
+    customer_payment_terms: Optional[str] = None
+    vendor_payment_terms: Optional[str] = None
+    # PBG / LD
+    pbg_ld_required: bool = False
+    pbg_ld_details: Optional[str] = None
+    # Milestones
+    milestones: List[CRMilestone] = []
+    # Visibility and people
+    assignees_to: List[str] = []   # employee ids
+    assignees_cc: List[str] = []
+    # Auto-fields
+    currency: str = "INR"
+
+
+class ChangeRequestOut(ChangeRequestIn):
+    id: str
+    cr_number: str
+    status: str = "draft"
+    created_by_user_id: Optional[str] = None
+    created_by_employee_no: Optional[str] = None
+    created_by_name: Optional[str] = None
+    submitted_at: Optional[str] = None
+    wbs_approved: bool = False
+    wbs_approved_by: Optional[str] = None
+    wbs_approved_at: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[str] = None
+    rejected_reason: Optional[str] = None
+    estimated_total_cost: float = 0.0
+    estimated_resource_cost: float = 0.0
+    estimated_margin_pct: float = 0.0
+    estimated_margin_amount: float = 0.0
+    approver_emails: List[str] = []
+    approver_role: Optional[str] = None
+    approver_rule_name: Optional[str] = None
+    # Attachment summaries
+    attachment_count: int = 0
+    customer_po_attachment_id: Optional[str] = None
+    vendor_cost_attachment_id: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
+
+class CRAttachmentOut(BaseModel):
+    id: str
+    kind: str   # customer_po | vendor_cost | resource_cost | other
+    filename: str
+    size: int
+    mime: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    uploaded_at: str
+
+
+# ============================================================
+# IN-APP NOTIFICATIONS  (bell icon)
+# ============================================================
+class InAppNotificationOut(BaseModel):
+    id: str
+    user_id: str
+    kind: str        # cr_submitted | cr_wbs_pending | cr_wbs_approved | cr_approved | cr_rejected | assigned
+    title: str
+    body: Optional[str] = None
+    link: Optional[str] = None
+    read: bool = False
+    created_at: str
